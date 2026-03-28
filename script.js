@@ -439,6 +439,15 @@ function initHowToPlayPanel() {
 async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
+
+    // Play a silent HTML5 audio element to establish the media audio session.
+    // This forces mobile browsers to route Web Audio through the main speaker
+    // instead of the earpiece.
+    const silentAudio = new Audio(
+        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+    );
+    silentAudio.play().catch(() => {});
+
     await Tone.start();
     initAudio();
     elements.overlay.classList.add('hidden');
@@ -464,6 +473,13 @@ function init() {
     });
 
     document.addEventListener('keyup', handleKeyUp);
+
+    // Resume AudioContext when returning to the tab (browsers suspend it in background)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && audioStarted) {
+            Tone.context.resume();
+        }
+    });
 
     // Volume
     elements.volumeSlider.addEventListener('input', (e) => {
