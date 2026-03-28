@@ -929,5 +929,5 @@ function init() {
 
 document.addEventListener('DOMContentLoaded', () => {
     init();
-    initParticles();
+    // initParticles();
 });
