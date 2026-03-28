@@ -54,6 +54,26 @@
                 <span id="volume-value">75%</span>
             </div>
 
+            <!-- Instrument Selector -->
+            <div class="control-group">
+                <label for="instrument-select">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 18V5l12-2v13"/>
+                        <circle cx="6" cy="18" r="3"/>
+                        <circle cx="18" cy="16" r="3"/>
+                    </svg>
+                    Instrument
+                </label>
+                <select id="instrument-select">
+                    <option value="piano">Piano</option>
+                    <option value="electric">Electric</option>
+                    <option value="organ">Organ</option>
+                    <option value="synth">Synth</option>
+                    <option value="warm">Warm</option>
+                    <option value="bell">Bell</option>
+                </select>
+            </div>
+
             <!-- Octave Selector -->
             <div class="control-group">
                 <label>
@@ -67,6 +87,20 @@
                     <button id="octave-down" aria-label="Octave down">&minus;</button>
                     <span id="octave-display">4</span>
                     <button id="octave-up" aria-label="Octave up">+</button>
+                </div>
+            </div>
+
+            <!-- Effects -->
+            <div class="control-group">
+                <label>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12h4l3-9 4 18 3-9h4"/>
+                    </svg>
+                    Effects
+                </label>
+                <div class="effects-controls">
+                    <button id="reverb-btn" class="btn btn-effect" aria-label="Toggle reverb">Reverb</button>
+                    <button id="delay-btn" class="btn btn-effect" aria-label="Toggle delay">Delay</button>
                 </div>
             </div>
 
@@ -105,6 +139,12 @@
         <!-- Note Display -->
         <div id="note-display" class="note-display">
             <span id="current-note">&mdash;</span>
+            <span id="sustain-indicator" class="sustain-indicator">SUSTAIN</span>
+        </div>
+
+        <!-- Waveform Visualizer -->
+        <div class="visualizer-container glass-panel">
+            <canvas id="visualizer"></canvas>
         </div>
 
         <!-- Piano Keyboard -->
@@ -164,6 +204,11 @@
                                 <tr class="sharp-row"><td><kbd>U</kbd></td><td>A#</td><td>Black</td></tr>
                                 <tr><td><kbd>J</kbd></td><td>B</td><td>White</td></tr>
                                 <tr><td><kbd>K</kbd></td><td>C (next octave)</td><td>White</td></tr>
+                                <tr><td colspan="3" style="padding-top: 1rem; border-bottom: none;">
+                                    <strong style="color: var(--text-muted);">Shortcuts</strong>
+                                </td></tr>
+                                <tr><td><kbd>Space</kbd></td><td colspan="2">Sustain Pedal (hold)</td></tr>
+                                <tr><td><kbd>Z</kbd> / <kbd>X</kbd></td><td colspan="2">Octave Down / Up</td></tr>
                             </tbody>
                         </table>
                     </div>

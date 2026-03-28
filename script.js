@@ -1,7 +1,8 @@
 /* ============================================================
    KeyMuse Piano - Application Logic
    Tone.js PolySynth, keyboard/mouse/touch input,
-   recording/playback, octave/volume controls
+   recording/playback, octave/volume controls,
+   instrument presets, effects, sustain, visualizer
    ============================================================ */
 
 // --- Constants & Configuration ---
@@ -21,8 +22,6 @@ const MAX_OCTAVE = 7;
 const DEFAULT_OCTAVE = 4;
 const DEFAULT_VOLUME = 75;
 
-// Black key positions relative to white key indices within one octave
-// C#=0, D#=1, F#=3, G#=4, A#=5 (index of white key to the LEFT of the black key)
 const BLACK_KEY_OFFSETS = [
     { note: 'C#', whiteIndex: 0 },
     { note: 'D#', whiteIndex: 1 },
@@ -31,10 +30,46 @@ const BLACK_KEY_OFFSETS = [
     { note: 'A#', whiteIndex: 5 }
 ];
 
+// --- Instrument Presets ---
+
+const PRESETS = {
+    piano: {
+        label: 'Piano',
+        oscillator: { type: 'triangle8' },
+        envelope: { attack: 0.015, decay: 1.5, sustain: 0.08, release: 1.0 }
+    },
+    electric: {
+        label: 'Electric',
+        oscillator: { type: 'fmsine', modulationIndex: 3, modulationType: 'sine' },
+        envelope: { attack: 0.01, decay: 0.8, sustain: 0.2, release: 0.6 }
+    },
+    organ: {
+        label: 'Organ',
+        oscillator: { type: 'sawtooth4' },
+        envelope: { attack: 0.05, decay: 0.3, sustain: 0.8, release: 0.3 }
+    },
+    synth: {
+        label: 'Synth',
+        oscillator: { type: 'square8' },
+        envelope: { attack: 0.01, decay: 0.5, sustain: 0.3, release: 0.4 }
+    },
+    warm: {
+        label: 'Warm',
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.1, decay: 1.0, sustain: 0.4, release: 1.2 }
+    },
+    bell: {
+        label: 'Bell',
+        oscillator: { type: 'amsine', modulationIndex: 5, modulationType: 'sine' },
+        envelope: { attack: 0.005, decay: 2.0, sustain: 0.01, release: 1.5 }
+    }
+};
+
 // --- State ---
 
 let baseOctave = DEFAULT_OCTAVE;
 let currentVolume = DEFAULT_VOLUME;
+let currentPreset = 'piano';
 let isRecording = false;
 let recordingData = [];
 let recordingStartTime = 0;
@@ -44,6 +79,14 @@ let activeKeys = new Set();
 let activeNotes = new Map();
 let audioStarted = false;
 let synth = null;
+let reverbNode = null;
+let delayNode = null;
+let analyserNode = null;
+let reverbActive = false;
+let delayActive = false;
+let sustainActive = false;
+let sustainedNotes = new Set();
+let animFrameId = null;
 
 // --- DOM References ---
 
@@ -64,25 +107,55 @@ function cacheElements() {
     elements.recordingIndicator = document.getElementById('recording-indicator');
     elements.howToPlayToggle = document.getElementById('how-to-play-toggle');
     elements.howToPlayContent = document.getElementById('how-to-play-content');
+    elements.instrumentSelect = document.getElementById('instrument-select');
+    elements.reverbBtn = document.getElementById('reverb-btn');
+    elements.delayBtn = document.getElementById('delay-btn');
+    elements.sustainIndicator = document.getElementById('sustain-indicator');
+    elements.visualizer = document.getElementById('visualizer');
 }
 
 // --- Audio Engine ---
 
-function initAudio() {
+function buildAudioGraph(presetKey) {
+    const preset = PRESETS[presetKey] || PRESETS.piano;
+
+    // Dispose old nodes
+    if (synth) { synth.disconnect(); synth.dispose(); }
+    if (reverbNode) { reverbNode.disconnect(); reverbNode.dispose(); }
+    if (delayNode) { delayNode.disconnect(); delayNode.dispose(); }
+    if (analyserNode) { analyserNode.disconnect(); analyserNode.dispose(); }
+
+    // Create new synth
     synth = new Tone.PolySynth(Tone.Synth, {
         maxPolyphony: 16,
         options: {
-            oscillator: { type: 'triangle8' },
-            envelope: {
-                attack: 0.015,
-                decay: 1.5,
-                sustain: 0.08,
-                release: 1.0
-            }
+            oscillator: preset.oscillator,
+            envelope: preset.envelope
         }
-    }).toDestination();
+    });
+
+    // Create effects
+    reverbNode = new Tone.Reverb({ decay: 2.5, wet: reverbActive ? 0.4 : 0 });
+    delayNode = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.3, wet: delayActive ? 0.35 : 0 });
+    analyserNode = new Tone.Analyser('waveform', 256);
+
+    // Chain: synth -> reverb -> delay -> analyser -> destination
+    synth.chain(reverbNode, delayNode, analyserNode, Tone.getDestination());
 
     updateVolume(currentVolume);
+}
+
+function initAudio() {
+    buildAudioGraph(currentPreset);
+    startVisualizer();
+}
+
+function switchInstrument(presetKey) {
+    if (!PRESETS[presetKey]) return;
+    currentPreset = presetKey;
+    if (synth) {
+        buildAudioGraph(presetKey);
+    }
 }
 
 function playNote(note) {
@@ -116,6 +189,96 @@ function updateVolume(percent) {
         synth.volume.value = -40 + (percent / 100) * 40;
     }
     currentVolume = percent;
+}
+
+// --- Effects Control ---
+
+function toggleReverb() {
+    reverbActive = !reverbActive;
+    if (reverbNode) {
+        reverbNode.wet.rampTo(reverbActive ? 0.4 : 0, 0.3);
+    }
+    elements.reverbBtn.classList.toggle('effect-active', reverbActive);
+}
+
+function toggleDelay() {
+    delayActive = !delayActive;
+    if (delayNode) {
+        delayNode.wet.rampTo(delayActive ? 0.35 : 0, 0.3);
+    }
+    elements.delayBtn.classList.toggle('effect-active', delayActive);
+}
+
+// --- Sustain Pedal ---
+
+function releaseSustainedNotes() {
+    for (const note of sustainedNotes) {
+        stopNote(note);
+        highlightKey(note, false);
+    }
+    sustainedNotes.clear();
+}
+
+// --- Waveform Visualizer ---
+
+function startVisualizer() {
+    const canvas = elements.visualizer;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * window.devicePixelRatio;
+        canvas.height = rect.height * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    function draw() {
+        animFrameId = requestAnimationFrame(draw);
+        if (!analyserNode) return;
+
+        const width = canvas.getBoundingClientRect().width;
+        const height = canvas.getBoundingClientRect().height;
+        const data = analyserNode.getValue();
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Glow effect
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#6366f1';
+        ctx.strokeStyle = '#818cf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        const sliceWidth = width / data.length;
+        let x = 0;
+        let hasSignal = false;
+
+        for (let i = 0; i < data.length; i++) {
+            const v = data[i];
+            if (Math.abs(v) > 0.005) hasSignal = true;
+            const y = ((v + 1) / 2) * height;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+            x += sliceWidth;
+        }
+
+        if (hasSignal) {
+            ctx.strokeStyle = '#a78bfa';
+            ctx.shadowColor = '#7c3aed';
+            ctx.shadowBlur = 12;
+        }
+
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    draw();
 }
 
 // --- Piano Keyboard Generation ---
@@ -233,9 +396,19 @@ function addPointerListeners(keyEl, note) {
 function activateKey(note) {
     playNote(note);
     highlightKey(note, true);
+    spawnRipple(note);
 }
 
 function deactivateKey(note) {
+    if (sustainActive) {
+        sustainedNotes.add(note);
+        const keyEl = elements.piano.querySelector('.key[data-note="' + note + '"]');
+        if (keyEl) {
+            keyEl.classList.remove('active');
+            keyEl.classList.add('sustained');
+        }
+        return;
+    }
     stopNote(note);
     highlightKey(note, false);
 }
@@ -244,6 +417,7 @@ function highlightKey(note, active) {
     const keyEl = elements.piano.querySelector('.key[data-note="' + note + '"]');
     if (keyEl) {
         keyEl.classList.toggle('active', active);
+        if (!active) keyEl.classList.remove('sustained');
     }
 }
 
@@ -253,13 +427,57 @@ function updateNoteDisplay(note) {
     setTimeout(() => elements.noteDisplay.classList.remove('pop'), 150);
 }
 
+// --- Key Press Ripple Effect ---
+
+function spawnRipple(note) {
+    const keyEl = elements.piano.querySelector('.key[data-note="' + note + '"]');
+    if (!keyEl) return;
+
+    // Remove existing ripple if any
+    const existing = keyEl.querySelector('.key-ripple');
+    if (existing) existing.remove();
+
+    const ripple = document.createElement('div');
+    ripple.className = 'key-ripple';
+    if (keyEl.classList.contains('black')) {
+        ripple.classList.add('black-ripple');
+    }
+    keyEl.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+}
+
 // --- Keyboard Input ---
 
 function handleKeyDown(e) {
     if (e.repeat) return;
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
 
     const key = e.key.toLowerCase();
+
+    // Sustain pedal (spacebar)
+    if (e.key === ' ') {
+        e.preventDefault();
+        if (!sustainActive) {
+            sustainActive = true;
+            elements.sustainIndicator.classList.add('active');
+        }
+        return;
+    }
+
+    // Octave shortcuts
+    if (key === 'z') {
+        e.preventDefault();
+        setOctave(baseOctave - 1);
+        flashOctaveDisplay();
+        return;
+    }
+    if (key === 'x') {
+        e.preventDefault();
+        setOctave(baseOctave + 1);
+        flashOctaveDisplay();
+        return;
+    }
+
     if (!(key in KEY_MAP)) return;
     if (activeKeys.has(key)) return;
 
@@ -270,6 +488,14 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
+    // Sustain pedal release
+    if (e.key === ' ') {
+        sustainActive = false;
+        elements.sustainIndicator.classList.remove('active');
+        releaseSustainedNotes();
+        return;
+    }
+
     const key = e.key.toLowerCase();
     if (!(key in KEY_MAP)) return;
 
@@ -282,6 +508,11 @@ function resolveNote(key) {
     const mapped = KEY_MAP[key];
     if (mapped === 'C+') return 'C' + (baseOctave + 1);
     return mapped + baseOctave;
+}
+
+function flashOctaveDisplay() {
+    elements.octaveDisplay.classList.add('flash');
+    setTimeout(() => elements.octaveDisplay.classList.remove('flash'), 300);
 }
 
 // --- Recording & Playback ---
@@ -395,6 +626,9 @@ function setOctave(newOctave) {
         keyEl.classList.remove('active');
     });
 
+    // Release sustained notes
+    releaseSustainedNotes();
+
     baseOctave = newOctave;
     elements.octaveDisplay.textContent = baseOctave;
     buildPiano();
@@ -440,9 +674,6 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // Play a silent HTML5 audio element to establish the media audio session.
-    // This forces mobile browsers to route Web Audio through the main speaker
-    // instead of the earpiece.
     const silentAudio = new Audio(
         'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
     );
@@ -465,7 +696,7 @@ function init() {
     document.addEventListener('keydown', async (e) => {
         if (!audioStarted) {
             const key = e.key.toLowerCase();
-            if (key in KEY_MAP) {
+            if (key in KEY_MAP || e.key === ' ') {
                 await ensureAudioStarted();
             }
         }
@@ -474,7 +705,7 @@ function init() {
 
     document.addEventListener('keyup', handleKeyUp);
 
-    // Resume AudioContext when returning to the tab (browsers suspend it in background)
+    // Resume AudioContext when returning to the tab
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && audioStarted) {
             Tone.context.resume();
@@ -491,6 +722,15 @@ function init() {
     // Octave
     elements.octaveDown.addEventListener('click', () => setOctave(baseOctave - 1));
     elements.octaveUp.addEventListener('click', () => setOctave(baseOctave + 1));
+
+    // Instrument selector
+    elements.instrumentSelect.addEventListener('change', (e) => {
+        switchInstrument(e.target.value);
+    });
+
+    // Effects
+    elements.reverbBtn.addEventListener('click', toggleReverb);
+    elements.delayBtn.addEventListener('click', toggleDelay);
 
     // Recording
     elements.recordBtn.addEventListener('click', toggleRecording);
