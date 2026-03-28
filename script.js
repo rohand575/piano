@@ -5,6 +5,150 @@
    instrument presets, effects, sustain, visualizer
    ============================================================ */
 
+// --- Particle Background ---
+
+const PARTICLE_COUNT = 80;
+const NOTE_COLORS = {
+    'C': '#6366f1', 'C#': '#818cf8', 'D': '#a78bfa', 'D#': '#c084fc',
+    'E': '#e879f9', 'F': '#f472b6', 'F#': '#fb7185', 'G': '#22c55e',
+    'G#': '#34d399', 'A': '#2dd4bf', 'A#': '#38bdf8', 'B': '#60a5fa'
+};
+const DEFAULT_PARTICLE_COLOR = 'rgba(99, 102, 241, 0.4)';
+
+let particles = [];
+let particleCanvas = null;
+let particleCtx = null;
+let particleAnimId = null;
+
+function initParticles() {
+    particleCanvas = document.getElementById('particle-bg');
+    if (!particleCanvas) return;
+    particleCtx = particleCanvas.getContext('2d');
+
+    function resize() {
+        particleCanvas.width = window.innerWidth;
+        particleCanvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push(createParticle());
+    }
+
+    drawParticles();
+}
+
+function createParticle(burst) {
+    const w = particleCanvas.width;
+    const h = particleCanvas.height;
+    return {
+        x: burst ? burst.x : Math.random() * w,
+        y: burst ? burst.y : Math.random() * h,
+        r: Math.random() * 2.5 + 1,
+        baseR: 0,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3 - 0.15,
+        color: DEFAULT_PARTICLE_COLOR,
+        targetColor: null,
+        alpha: Math.random() * 0.5 + 0.2,
+        baseAlpha: 0,
+        pulse: 0,
+        scatter: 0,
+        scatterVx: 0,
+        scatterVy: 0
+    };
+}
+
+function drawParticles() {
+    particleAnimId = requestAnimationFrame(drawParticles);
+    const ctx = particleCtx;
+    const w = particleCanvas.width;
+    const h = particleCanvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    for (const p of particles) {
+        // Apply scatter velocity (decays over time)
+        if (p.scatter > 0) {
+            p.x += p.scatterVx * p.scatter;
+            p.y += p.scatterVy * p.scatter;
+            p.scatter *= 0.95;
+            if (p.scatter < 0.01) p.scatter = 0;
+        }
+
+        // Drift
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wrap around edges
+        if (p.x < -10) p.x = w + 10;
+        if (p.x > w + 10) p.x = -10;
+        if (p.y < -10) p.y = h + 10;
+        if (p.y > h + 10) p.y = -10;
+
+        // Pulse decay
+        if (p.pulse > 0) {
+            p.pulse *= 0.93;
+            if (p.pulse < 0.01) p.pulse = 0;
+        }
+
+        // Color fade back to default
+        if (!p.targetColor && p.pulse <= 0) {
+            p.color = DEFAULT_PARTICLE_COLOR;
+        }
+
+        const currentR = p.r + p.pulse * 3;
+        const currentAlpha = Math.min(1, p.alpha + p.pulse * 0.6);
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, currentR, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = currentAlpha;
+        ctx.fill();
+
+        // Glow on pulse
+        if (p.pulse > 0.05) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, currentR + p.pulse * 6, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.pulse * 0.3;
+            ctx.fill();
+        }
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+function reactParticlesToNote(note) {
+    const noteName = note.replace(/\d+/g, '');
+    const color = NOTE_COLORS[noteName] || '#6366f1';
+
+    // Pick random particles to react
+    const reactCount = Math.floor(particles.length * 0.35);
+    const shuffled = [...particles].sort(() => Math.random() - 0.5);
+
+    for (let i = 0; i < reactCount; i++) {
+        const p = shuffled[i];
+        p.pulse = 1;
+        p.color = color;
+        p.targetColor = color;
+
+        // Scatter away from center
+        const cx = particleCanvas.width / 2;
+        const cy = particleCanvas.height / 2;
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        p.scatter = 1;
+        p.scatterVx = (dx / dist) * (Math.random() * 2 + 1);
+        p.scatterVy = (dy / dist) * (Math.random() * 2 + 1);
+
+        // Schedule color fade-back
+        setTimeout(() => { p.targetColor = null; }, 600 + Math.random() * 400);
+    }
+}
+
 // --- Constants & Configuration ---
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -78,7 +222,7 @@ let playbackTimeouts = [];
 let activeKeys = new Set();
 let activeNotes = new Map();
 let audioStarted = false;
-let synth = null;
+let volumeNode = null;
 let reverbNode = null;
 let delayNode = null;
 let analyserNode = null;
@@ -86,6 +230,7 @@ let reverbActive = false;
 let delayActive = false;
 let sustainActive = false;
 let sustainedNotes = new Set();
+let voices = new Map();  // note -> { synth, disposeTimer }
 let animFrameId = null;
 
 // --- DOM References ---
@@ -116,51 +261,76 @@ function cacheElements() {
 
 // --- Audio Engine ---
 
-function buildAudioGraph(presetKey) {
-    const preset = PRESETS[presetKey] || PRESETS.piano;
+function disposeVoice(note) {
+    const voice = voices.get(note);
+    if (!voice) return;
+    clearTimeout(voice.disposeTimer);
+    try { voice.synth.disconnect(); } catch (_) {}
+    voice.synth.dispose();
+    voices.delete(note);
+}
 
+function disposeAllVoices() {
+    for (const note of voices.keys()) {
+        disposeVoice(note);
+    }
+}
+
+function buildAudioGraph() {
     // Dispose old nodes
-    if (synth) { synth.disconnect(); synth.dispose(); }
+    disposeAllVoices();
+    if (volumeNode) { volumeNode.disconnect(); volumeNode.dispose(); }
     if (reverbNode) { reverbNode.disconnect(); reverbNode.dispose(); }
     if (delayNode) { delayNode.disconnect(); delayNode.dispose(); }
     if (analyserNode) { analyserNode.disconnect(); analyserNode.dispose(); }
 
-    // Create new synth
-    synth = new Tone.PolySynth(Tone.Synth, {
-        maxPolyphony: 16,
-        options: {
-            oscillator: preset.oscillator,
-            envelope: preset.envelope
-        }
-    });
+    // Shared volume node — all per-note synths connect here
+    volumeNode = new Tone.Volume(0);
 
     // Create effects
     reverbNode = new Tone.Reverb({ decay: 2.5, wet: reverbActive ? 0.4 : 0 });
     delayNode = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.3, wet: delayActive ? 0.35 : 0 });
     analyserNode = new Tone.Analyser('waveform', 256);
 
-    // Chain: synth -> reverb -> delay -> analyser -> destination
-    synth.chain(reverbNode, delayNode, analyserNode, Tone.getDestination());
+    // Chain: volumeNode -> reverb -> delay -> analyser -> destination
+    volumeNode.chain(reverbNode, delayNode, analyserNode, Tone.getDestination());
 
     updateVolume(currentVolume);
 }
 
 function initAudio() {
-    buildAudioGraph(currentPreset);
+    buildAudioGraph();
     startVisualizer();
 }
 
 function switchInstrument(presetKey) {
     if (!PRESETS[presetKey]) return;
     currentPreset = presetKey;
-    if (synth) {
-        buildAudioGraph(presetKey);
-    }
+    disposeAllVoices();
 }
 
 function playNote(note) {
-    if (!synth) return;
-    synth.triggerAttack(note, Tone.now());
+    if (!volumeNode) return;
+
+    // Resume audio context if browser suspended it during inactivity
+    if (Tone.context.state !== 'running') {
+        Tone.context.resume();
+    }
+
+    // Kill any existing voice for this note immediately
+    disposeVoice(note);
+    sustainedNotes.delete(note);
+
+    // Create a fresh Synth for this note
+    const preset = PRESETS[currentPreset] || PRESETS.piano;
+    const s = new Tone.Synth({
+        oscillator: preset.oscillator,
+        envelope: preset.envelope
+    });
+    s.connect(volumeNode);
+    s.triggerAttack(note, Tone.now());
+
+    voices.set(note, { synth: s, disposeTimer: null });
     updateNoteDisplay(note);
 
     if (isRecording) {
@@ -169,8 +339,15 @@ function playNote(note) {
 }
 
 function stopNote(note) {
-    if (!synth) return;
-    synth.triggerRelease(note, Tone.now());
+    const voice = voices.get(note);
+    if (!voice) return;
+
+    voice.synth.triggerRelease(Tone.now());
+
+    // Schedule disposal after the release envelope finishes
+    const preset = PRESETS[currentPreset] || PRESETS.piano;
+    const releaseMs = (preset.envelope.release || 1) * 1000 + 300;
+    voice.disposeTimer = setTimeout(() => disposeVoice(note), releaseMs);
 
     if (isRecording && activeNotes.has(note)) {
         const startTime = activeNotes.get(note);
@@ -182,13 +359,13 @@ function stopNote(note) {
 }
 
 function updateVolume(percent) {
-    if (!synth) return;
-    if (percent === 0) {
-        synth.volume.value = -Infinity;
-    } else {
-        synth.volume.value = -40 + (percent / 100) * 40;
-    }
+    if (!volumeNode) return;
     currentVolume = percent;
+    if (percent === 0) {
+        volumeNode.volume.value = -Infinity;
+    } else {
+        volumeNode.volume.value = -40 + (percent / 100) * 40;
+    }
 }
 
 // --- Effects Control ---
@@ -397,6 +574,7 @@ function activateKey(note) {
     playNote(note);
     highlightKey(note, true);
     spawnRipple(note);
+    reactParticlesToNote(note);
 }
 
 function deactivateKey(note) {
@@ -628,6 +806,7 @@ function setOctave(newOctave) {
 
     // Release sustained notes
     releaseSustainedNotes();
+    disposeAllVoices();
 
     baseOctave = newOctave;
     elements.octaveDisplay.textContent = baseOctave;
@@ -748,4 +927,7 @@ function init() {
     elements.octaveDisplay.textContent = baseOctave;
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    initParticles();
+});
