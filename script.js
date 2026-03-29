@@ -226,6 +226,7 @@ let volumeNode = null;
 let reverbNode = null;
 let delayNode = null;
 let analyserNode = null;
+let fftNode = null;
 let reverbActive = false;
 let delayActive = false;
 let sustainActive = false;
@@ -257,6 +258,7 @@ function cacheElements() {
     elements.delayBtn = document.getElementById('delay-btn');
     elements.sustainIndicator = document.getElementById('sustain-indicator');
     elements.visualizer = document.getElementById('visualizer');
+    elements.spectrum = document.getElementById('spectrum');
 }
 
 // --- Audio Engine ---
@@ -283,6 +285,7 @@ function buildAudioGraph() {
     if (reverbNode) { reverbNode.disconnect(); reverbNode.dispose(); }
     if (delayNode) { delayNode.disconnect(); delayNode.dispose(); }
     if (analyserNode) { analyserNode.disconnect(); analyserNode.dispose(); }
+    if (fftNode) { fftNode.disconnect(); fftNode.dispose(); }
 
     // Shared volume node — all per-note synths connect here
     volumeNode = new Tone.Volume(0);
@@ -291,9 +294,12 @@ function buildAudioGraph() {
     reverbNode = new Tone.Reverb({ decay: 2.5, wet: reverbActive ? 0.4 : 0 });
     delayNode = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.3, wet: delayActive ? 0.35 : 0 });
     analyserNode = new Tone.Analyser('waveform', 256);
+    fftNode = new Tone.Analyser('fft', 128);
 
     // Chain: volumeNode -> reverb -> delay -> analyser -> destination
     volumeNode.chain(reverbNode, delayNode, analyserNode, Tone.getDestination());
+    // Also connect to FFT analyser (parallel tap)
+    analyserNode.connect(fftNode);
 
     updateVolume(currentVolume);
 }
@@ -390,6 +396,7 @@ function toggleDelay() {
 
 function releaseSustainedNotes() {
     for (const note of sustainedNotes) {
+        pianoRollNoteOff(note);
         stopNote(note);
         highlightKey(note, false);
     }
@@ -403,11 +410,26 @@ function startVisualizer() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
+    // Spectrum canvas
+    const specCanvas = elements.spectrum;
+    const specCtx = specCanvas ? specCanvas.getContext('2d') : null;
+
+    // Smoothed bar heights for bouncy animation
+    const smoothBars = new Float32Array(128);
+
     function resizeCanvas() {
+        const dpr = window.devicePixelRatio;
         const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * window.devicePixelRatio;
-        canvas.height = rect.height * window.devicePixelRatio;
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        if (specCanvas) {
+            const specRect = specCanvas.getBoundingClientRect();
+            specCanvas.width = specRect.width * dpr;
+            specCanvas.height = specRect.height * dpr;
+            specCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
@@ -453,9 +475,268 @@ function startVisualizer() {
 
         ctx.stroke();
         ctx.shadowBlur = 0;
+
+        // --- Frequency Spectrum Bars ---
+        if (!specCtx || !fftNode) return;
+
+        const specWidth = specCanvas.getBoundingClientRect().width;
+        const specHeight = specCanvas.getBoundingClientRect().height;
+        const fftData = fftNode.getValue(); // dB values
+
+        specCtx.clearRect(0, 0, specWidth, specHeight);
+
+        // Use only the lower ~60% of bins (skip ultra-high frequencies)
+        const usableBins = Math.floor(fftData.length * 0.6);
+        const barCount = Math.min(usableBins, 64);
+        const gap = 2;
+        const barWidth = (specWidth - gap * (barCount - 1)) / barCount;
+
+        for (let i = 0; i < barCount; i++) {
+            // Map bar index to FFT bin
+            const binIndex = Math.floor((i / barCount) * usableBins);
+            const db = fftData[binIndex];
+
+            // Normalize dB: FFT returns roughly -100 to 0
+            const normalized = Math.max(0, (db + 100) / 100);
+            const targetHeight = normalized * specHeight;
+
+            // Smooth: rise fast, fall slow (bouncy decay)
+            if (targetHeight > smoothBars[i]) {
+                smoothBars[i] = targetHeight; // snap up
+            } else {
+                smoothBars[i] += (targetHeight - smoothBars[i]) * 0.15; // ease down
+            }
+
+            const barH = smoothBars[i];
+            const bx = i * (barWidth + gap);
+            const by = specHeight - barH;
+
+            // Color gradient per bar (hue shifts across spectrum)
+            const hue = (i / barCount) * 270 + 240; // blue -> purple -> pink
+            const lightness = 55 + normalized * 20;
+            specCtx.fillStyle = `hsl(${hue % 360}, 80%, ${lightness}%)`;
+
+            // Glow when loud
+            if (normalized > 0.4) {
+                specCtx.shadowBlur = 8 + normalized * 8;
+                specCtx.shadowColor = `hsl(${hue % 360}, 90%, 60%)`;
+            } else {
+                specCtx.shadowBlur = 0;
+            }
+
+            // Rounded top bars
+            const radius = Math.min(barWidth / 2, 3);
+            specCtx.beginPath();
+            specCtx.moveTo(bx + radius, by);
+            specCtx.lineTo(bx + barWidth - radius, by);
+            specCtx.quadraticCurveTo(bx + barWidth, by, bx + barWidth, by + radius);
+            specCtx.lineTo(bx + barWidth, specHeight);
+            specCtx.lineTo(bx, specHeight);
+            specCtx.lineTo(bx, by + radius);
+            specCtx.quadraticCurveTo(bx, by, bx + radius, by);
+            specCtx.fill();
+        }
+
+        specCtx.shadowBlur = 0;
     }
 
     draw();
+}
+
+// --- Piano Roll (Falling Notes) ---
+
+let pianoRollNotes = [];
+let pianoRollActiveMap = new Map();
+let pianoRollKeyMap = new Map();
+let pianoRollCanvas = null;
+let pianoRollCtx = null;
+let pianoRollW = 0;
+let pianoRollH = 0;
+const ROLL_SPEED = 0.08;
+const ROLL_MIN_HEIGHT = 8;
+
+function initPianoRoll() {
+    pianoRollCanvas = document.getElementById('piano-roll');
+    if (!pianoRollCanvas) return;
+    pianoRollCtx = pianoRollCanvas.getContext('2d');
+    syncPianoRollSize();
+    cachePianoRollKeys();
+    window.addEventListener('resize', () => {
+        syncPianoRollSize();
+        cachePianoRollKeys();
+    });
+    renderPianoRoll();
+}
+
+function syncPianoRollSize() {
+    if (!pianoRollCanvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const container = pianoRollCanvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    pianoRollW = rect.width;
+    pianoRollH = rect.height;
+    pianoRollCanvas.width = pianoRollW * dpr;
+    pianoRollCanvas.height = pianoRollH * dpr;
+    pianoRollCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function cachePianoRollKeys() {
+    pianoRollKeyMap.clear();
+    if (!elements.piano) return;
+    const pianoRect = elements.piano.getBoundingClientRect();
+    elements.piano.querySelectorAll('.key').forEach(key => {
+        const note = key.dataset.note;
+        const kr = key.getBoundingClientRect();
+        pianoRollKeyMap.set(note, {
+            x: kr.left - pianoRect.left,
+            width: kr.width,
+            isBlack: key.classList.contains('black')
+        });
+    });
+}
+
+function getPianoKeyPos(note) {
+    return pianoRollKeyMap.get(note) || null;
+}
+
+function pianoRollNoteOn(note) {
+    if (!pianoRollCanvas) return;
+    pianoRollNoteOff(note);
+    const pos = getPianoKeyPos(note);
+    if (!pos) return;
+    const noteName = note.replace(/\d+/g, '');
+    const color = NOTE_COLORS[noteName] || '#6366f1';
+    const obj = {
+        x: pos.x, width: pos.width, isBlack: pos.isBlack,
+        color, startTime: performance.now(), endTime: null
+    };
+    pianoRollNotes.push(obj);
+    pianoRollActiveMap.set(note, obj);
+}
+
+function pianoRollNoteOff(note) {
+    const obj = pianoRollActiveMap.get(note);
+    if (obj) {
+        obj.endTime = performance.now();
+        pianoRollActiveMap.delete(note);
+    }
+}
+
+function clearPianoRollActive() {
+    const now = performance.now();
+    for (const [, obj] of pianoRollActiveMap) obj.endTime = now;
+    pianoRollActiveMap.clear();
+}
+
+function renderPianoRoll() {
+    requestAnimationFrame(renderPianoRoll);
+    if (!pianoRollCtx) return;
+    const ctx = pianoRollCtx;
+    const w = pianoRollW;
+    const h = pianoRollH;
+    if (w === 0 || h === 0) return;
+    const now = performance.now();
+
+    ctx.clearRect(0, 0, w, h);
+    drawPianoRollLanes(ctx, w, h);
+
+    // Cull off-screen notes
+    pianoRollNotes = pianoRollNotes.filter(n => {
+        if (!n.endTime) return true;
+        const elapsed = now - n.endTime;
+        return (h - elapsed * ROLL_SPEED) > -200;
+    });
+
+    // Draw note blocks
+    for (const n of pianoRollNotes) {
+        let bottomY, topY;
+        if (!n.endTime) {
+            bottomY = h;
+            topY = h - Math.max((now - n.startTime) * ROLL_SPEED, ROLL_MIN_HEIGHT);
+        } else {
+            const dur = n.endTime - n.startTime;
+            const elapsed = now - n.endTime;
+            bottomY = h - elapsed * ROLL_SPEED;
+            topY = bottomY - Math.max(dur * ROLL_SPEED, ROLL_MIN_HEIGHT);
+        }
+
+        const dTop = Math.max(0, topY);
+        const dBottom = Math.min(h, bottomY);
+        if (dBottom <= dTop) continue;
+        const dH = dBottom - dTop;
+
+        const fadeZone = h * 0.25;
+        const alpha = dTop < fadeZone ? Math.max(0.05, dTop / fadeZone) : 1;
+        const isActive = !n.endTime;
+
+        ctx.shadowBlur = isActive ? 16 : 8;
+        ctx.shadowColor = n.color;
+
+        const inset = n.isBlack ? 1 : 2;
+        const nw = n.width - inset * 2;
+        const r = Math.min(5, dH / 2, nw / 2);
+        ctx.beginPath();
+        pianoRollRoundRect(ctx, n.x + inset, dTop, nw, dH, r);
+
+        const grad = ctx.createLinearGradient(n.x, 0, n.x + n.width, 0);
+        grad.addColorStop(0, n.color + 'aa');
+        grad.addColorStop(0.5, n.color);
+        grad.addColorStop(1, n.color + 'aa');
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = alpha * (isActive ? 0.92 : 0.7);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+    }
+
+    // "Now" line glow at bottom
+    const nowGrad = ctx.createLinearGradient(0, h - 4, 0, h);
+    nowGrad.addColorStop(0, 'transparent');
+    nowGrad.addColorStop(1, 'rgba(99, 102, 241, 0.6)');
+    ctx.fillStyle = nowGrad;
+    ctx.fillRect(0, h - 4, w, 4);
+
+    // Top fade overlay
+    const topFade = ctx.createLinearGradient(0, 0, 0, 50);
+    topFade.addColorStop(0, '#0a0a16');
+    topFade.addColorStop(1, 'transparent');
+    ctx.fillStyle = topFade;
+    ctx.fillRect(0, 0, w, 50);
+}
+
+function drawPianoRollLanes(ctx, w, h) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1;
+    for (const [, pos] of pianoRollKeyMap) {
+        if (!pos.isBlack) {
+            const x = Math.round(pos.x + pos.width) + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+    }
+}
+
+function pianoRollRoundRect(ctx, x, y, w, h, r) {
+    if (r <= 0 || w <= 0 || h <= 0) { ctx.rect(x, y, w, h); return; }
+    r = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
 }
 
 // --- Piano Keyboard Generation ---
@@ -502,6 +783,11 @@ function buildPiano() {
             keyEl.style.left = left + 'px';
             elements.piano.appendChild(keyEl);
         });
+    }
+
+    if (pianoRollCanvas) {
+        syncPianoRollSize();
+        cachePianoRollKeys();
     }
 }
 
@@ -575,6 +861,7 @@ function activateKey(note) {
     highlightKey(note, true);
     spawnRipple(note);
     reactParticlesToNote(note);
+    pianoRollNoteOn(note);
 }
 
 function deactivateKey(note) {
@@ -587,6 +874,7 @@ function deactivateKey(note) {
         }
         return;
     }
+    pianoRollNoteOff(note);
     stopNote(note);
     highlightKey(note, false);
 }
@@ -807,6 +1095,7 @@ function setOctave(newOctave) {
     // Release sustained notes
     releaseSustainedNotes();
     disposeAllVoices();
+    clearPianoRollActive();
 
     baseOctave = newOctave;
     elements.octaveDisplay.textContent = baseOctave;
@@ -921,6 +1210,7 @@ function init() {
 
     // Build piano
     buildPiano();
+    initPianoRoll();
 
     // Set initial display values
     elements.volumeValue.textContent = currentVolume + '%';
