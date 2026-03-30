@@ -1566,6 +1566,12 @@ let _unmuteHandle = null;
 
 // Resume the audio context. Called on user interactions.
 function resumeAudioContext() {
+    // Resume the raw context directly — Tone.start() alone is not always
+    // sufficient on iOS to unlock the audio output on the speaker.
+    const rawCtx = Tone.getContext().rawContext;
+    if (rawCtx && rawCtx.state !== 'running') {
+        rawCtx.resume().catch(() => {});
+    }
     // Tone.start() is safe to call repeatedly — resumes context + resolves internal promise
     Tone.start().catch(() => {});
 }
@@ -1598,8 +1604,25 @@ function ensureAudioStarted() {
         }
     } catch (_) {}
 
-    // Tone.start() resolves the internal context resume promise
+    // Resume raw context + Tone.start()
+    const rawCtx = Tone.getContext().rawContext;
+    if (rawCtx && rawCtx.state !== 'running') {
+        rawCtx.resume().catch(() => {});
+    }
     Tone.start().catch(() => {});
+
+    // Play a short silent buffer to fully unlock iOS audio hardware.
+    // Without this, iOS may keep the context "running" but produce no audible output.
+    try {
+        const ctx = rawCtx || Tone.getContext().rawContext;
+        if (ctx && ctx.createBuffer) {
+            const silentBuf = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = silentBuf;
+            src.connect(ctx.destination);
+            src.start(0);
+        }
+    } catch (_) {}
 
     // Build the audio graph now that context is unlocked
     if (!volumeNode) {
@@ -1634,6 +1657,9 @@ function init() {
         if (!audioStarted) {
             ensureAudioStarted();
         }
+        // Always retry resume — iOS may need a touchend/click user gesture
+        // to fully unlock the speaker even if the context was already created.
+        resumeAudioContext();
     };
     document.addEventListener('touchstart', unlockOnTouch, { passive: true });
     document.addEventListener('touchend', unlockOnTouch, { passive: true });

@@ -117,14 +117,18 @@ function unmute(context, allowBackgroundPlayback, forceIOSBehavior) {
             if (allowPlayback) {
                 if (isMediaPlaybackEvent) {
                     if (!channelTag) {
-                        var tmp = document.createElement("div");
-                        tmp.innerHTML = "<audio x-webkit-airplay='deny'></audio>";
-                        channelTag = tmp.children.item(0);
+                        channelTag = document.createElement("audio");
+                        channelTag.setAttribute("x-webkit-airplay", "deny");
+                        channelTag.setAttribute("playsinline", "");
+                        channelTag.setAttribute("webkit-playsinline", "");
                         channelTag.controls = false;
                         channelTag.disableRemotePlayback = true;
                         channelTag.preload = "auto";
                         channelTag.src = silence;
                         channelTag.loop = true;
+                        // Must be in DOM for iOS to route audio through media channel
+                        channelTag.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:0;height:0;";
+                        document.body.appendChild(channelTag);
                         channelTag.load();
                     }
                     if (channelTag.paused) {
@@ -140,14 +144,16 @@ function unmute(context, allowBackgroundPlayback, forceIOSBehavior) {
 
     function destroyChannelTag() {
         if (channelTag) {
+            channelTag.pause();
             channelTag.src = "about:blank";
             channelTag.load();
+            if (channelTag.parentNode) channelTag.parentNode.removeChild(channelTag);
             channelTag = null;
         }
     }
 
     // Input - media playback events
-    var mediaPlaybackEvents = ["click", "contextmenu", "auxclick", "dblclick", "mousedown", "mouseup", "touchend", "keydown", "keyup"];
+    var mediaPlaybackEvents = ["click", "contextmenu", "auxclick", "dblclick", "mousedown", "mouseup", "touchstart", "touchend", "keydown", "keyup"];
     var hasMediaPlaybackEventOccurred = false;
 
     function win_mediaPlaybackEvent() {
