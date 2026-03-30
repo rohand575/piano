@@ -1560,120 +1560,112 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // --- iOS speaker fix ---
-    // On iOS (Safari & Chrome/WKWebView), the Web Audio API AudioContext
-    // gets routed to the earpiece. To force loudspeaker we must:
-    //   1. Play an HTML5 <audio> element with REAL audio to claim speaker route
-    //   2. Wait for actual audio output and route to stabilize
-    //   3. Create a FRESH AudioContext (inherits the speaker route)
-    //   4. Hand it to Tone.js before Tone.start()
-    //
-    // Key details:
-    //   - Amplitude must be high enough (~500/32767) for iOS to recognize real output
-    //   - Audio element must be in the DOM on some iOS versions
-    //   - We need to wait long enough for the audio route to fully establish
-
-    // Step 1: Close Tone's pre-existing context (may be earpiece-routed)
     try {
-        const oldCtx = Tone.getContext().rawContext;
-        if (oldCtx && oldCtx.state !== 'closed') {
-            await oldCtx.close();
-        }
-    } catch (_) {}
+        // --- iOS speaker fix ---
+        // On iOS, Web Audio routes to earpiece unless HTML5 Audio claims
+        // the speaker first. We play a short WAV, wait for the route to
+        // stabilise, then create a fresh AudioContext that inherits it.
 
-    // Step 2: Play HTML5 audio to claim speaker route
-    let speakerUnlock;
-    let blobUrl;
-    try {
-        const sampleRate = 16000;
-        const duration = 0.75;
-        const numSamples = Math.floor(sampleRate * duration);
-        const bytesPerSample = 2;
-        const dataSize = numSamples * bytesPerSample;
-        const buffer = new ArrayBuffer(44 + dataSize);
-        const view = new DataView(buffer);
+        // Step 1: Play HTML5 audio to claim speaker route (before touching AudioContext)
+        let speakerUnlock;
+        let blobUrl;
+        try {
+            const sampleRate = 16000;
+            const duration = 0.75;
+            const numSamples = Math.floor(sampleRate * duration);
+            const bytesPerSample = 2;
+            const dataSize = numSamples * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
 
-        const writeStr = (offset, str) => {
-            for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-        };
-        writeStr(0, 'RIFF');
-        view.setUint32(4, 36 + dataSize, true);
-        writeStr(8, 'WAVE');
-        writeStr(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * bytesPerSample, true);
-        view.setUint16(32, bytesPerSample, true);
-        view.setUint16(34, 16, true);
-        writeStr(36, 'data');
-        view.setUint32(40, dataSize, true);
+            const writeStr = (offset, str) => {
+                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+            };
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * bytesPerSample, true);
+            view.setUint16(32, bytesPerSample, true);
+            view.setUint16(34, 16, true);
+            writeStr(36, 'data');
+            view.setUint32(40, dataSize, true);
 
-        // Low but real amplitude (~500/32767 ≈ -36dB) — enough for iOS to
-        // recognise actual audio output and switch to speaker route, but
-        // quiet enough that it's effectively inaudible through the speaker
-        for (let i = 0; i < numSamples; i++) {
-            view.setInt16(44 + i * 2, 500, true);
-        }
+            // Amplitude ~500/32767 ≈ -36 dB — loud enough for iOS to claim the
+            // speaker route, quiet enough to be effectively inaudible
+            for (let i = 0; i < numSamples; i++) {
+                view.setInt16(44 + i * 2, 500, true);
+            }
 
-        const blob = new Blob([buffer], { type: 'audio/wav' });
-        blobUrl = URL.createObjectURL(blob);
-        speakerUnlock = new Audio(blobUrl);
-        speakerUnlock.setAttribute('playsinline', '');
-        speakerUnlock.setAttribute('webkit-playsinline', '');
-        speakerUnlock.volume = 1.0;
-        speakerUnlock.muted = false;
-        // Some iOS versions need the element in the DOM
-        speakerUnlock.style.display = 'none';
-        document.body.appendChild(speakerUnlock);
+            const blob = new Blob([buffer], { type: 'audio/wav' });
+            blobUrl = URL.createObjectURL(blob);
+            speakerUnlock = new Audio(blobUrl);
+            speakerUnlock.setAttribute('playsinline', '');
+            speakerUnlock.setAttribute('webkit-playsinline', '');
+            speakerUnlock.volume = 1.0;
+            speakerUnlock.muted = false;
+            speakerUnlock.style.display = 'none';
+            document.body.appendChild(speakerUnlock);
 
-        // Wait for actual audio output (timeupdate fires once real samples play)
-        await new Promise((resolve) => {
-            const fallback = setTimeout(resolve, 800);
-            speakerUnlock.addEventListener('timeupdate', () => {
-                clearTimeout(fallback);
-                resolve();
-            }, { once: true });
-            speakerUnlock.play().catch(() => {
-                clearTimeout(fallback);
-                resolve();
+            await new Promise((resolve) => {
+                const fallback = setTimeout(resolve, 600);
+                speakerUnlock.addEventListener('timeupdate', () => {
+                    clearTimeout(fallback);
+                    resolve();
+                }, { once: true });
+                speakerUnlock.play().catch(() => {
+                    clearTimeout(fallback);
+                    resolve();
+                });
             });
-        });
 
-        // Give iOS time to fully establish the speaker route
-        await new Promise(r => setTimeout(r, 400));
-    } catch (_) {
-        // Continue even if speaker unlock fails (desktop, etc.)
-    }
-
-    // Step 3: Create a FRESH AudioContext that inherits the speaker route
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const freshCtx = new AudioCtx();
-
-    // Play a tiny buffer to force the context into active state
-    try {
-        const silentBuf = freshCtx.createBuffer(1, 1, freshCtx.sampleRate);
-        const src = freshCtx.createBufferSource();
-        src.buffer = silentBuf;
-        src.connect(freshCtx.destination);
-        src.start(0);
-        if (freshCtx.state !== 'running') {
-            await freshCtx.resume();
+            // Let iOS establish the speaker route
+            await new Promise(r => setTimeout(r, 400));
+        } catch (_) {
+            // Speaker unlock is best-effort; continue to start audio
         }
-    } catch (_) {}
 
-    // Step 4: Hand the fresh context to Tone.js
-    Tone.setContext(freshCtx);
-    await Tone.start();
+        // Step 2: Close Tone's pre-existing context (may be earpiece-routed)
+        try {
+            const oldCtx = Tone.getContext().rawContext;
+            if (oldCtx && oldCtx.state !== 'closed') {
+                await oldCtx.close();
+            }
+        } catch (_) {}
 
-    // Clean up the speaker unlock element
-    if (speakerUnlock) {
-        speakerUnlock.pause();
-        speakerUnlock.remove();
+        // Step 3: Create a FRESH AudioContext that inherits the speaker route
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const freshCtx = new AudioCtx();
+
+        // Nudge context into running state
+        try {
+            const silentBuf = freshCtx.createBuffer(1, 1, freshCtx.sampleRate);
+            const src = freshCtx.createBufferSource();
+            src.buffer = silentBuf;
+            src.connect(freshCtx.destination);
+            src.start(0);
+            if (freshCtx.state !== 'running') await freshCtx.resume();
+        } catch (_) {}
+
+        // Step 4: Hand the fresh context to Tone.js
+        Tone.setContext(freshCtx);
+        await Tone.start();
+
+        // Clean up speaker unlock element
+        if (speakerUnlock) { speakerUnlock.pause(); speakerUnlock.remove(); }
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+
+    } catch (_) {
+        // Fallback: if the fresh-context approach fails entirely,
+        // just start Tone.js with whatever context it already has
+        try { await Tone.start(); } catch (_2) {}
     }
-    if (blobUrl) URL.revokeObjectURL(blobUrl);
 
+    // These MUST run no matter what — initialise audio graph and dismiss overlay
     initAudio();
     elements.overlay.classList.add('hidden');
 }
