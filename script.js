@@ -1570,12 +1570,20 @@ const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
 //   - Is silenced by the ringer/mute switch
 //   - May route to earpiece instead of speaker
 // Playing an <audio> element forces the session to "playback" category.
+// We keep a persistent reference so iOS doesn't garbage-collect it too early.
+let _iosUnlockAudio = null;
+let _iosUnlockLastCall = 0;
 function _unlockIOSPlaybackCategory() {
     if (!_isIOS) return;
+    // Throttle: don't re-trigger more than once every 2 seconds
+    const now = Date.now();
+    if (now - _iosUnlockLastCall < 2000 && _iosUnlockLastCall > 0) return;
+    _iosUnlockLastCall = now;
     try {
-        // Create a minimal valid silent WAV
+        // Create a short silent WAV with a tiny non-zero sample so iOS
+        // recognises actual audio output and switches to "playback" category.
         const sampleRate = 8000;
-        const numSamples = 1600; // 0.2s
+        const numSamples = 4000; // 0.5s — longer to ensure category switch
         const bytesPerSample = 2;
         const dataSize = numSamples * bytesPerSample;
         const buf = new ArrayBuffer(44 + dataSize);
@@ -1588,16 +1596,25 @@ function _unlockIOSPlaybackCategory() {
         v.setUint32(28, sampleRate * bytesPerSample, true);
         v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
         w(36, 'data'); v.setUint32(40, dataSize, true);
-        // Samples stay at 0 (silence) — ArrayBuffer is zero-initialized
+        // Write a tiny non-zero pulse at the start — a truly silent buffer
+        // may not trigger the audio category switch on some iOS versions.
+        const samples = new Int16Array(buf, 44);
+        samples[0] = 1;
 
         const blob = new Blob([buf], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
         const a = new Audio(url);
         a.setAttribute('playsinline', '');
-        a.volume = 0.001;
+        a.setAttribute('webkit-playsinline', '');
+        // Volume must be audible (not near-zero) for iOS to honour
+        // the category switch; 1% is inaudible to humans but enough for iOS.
+        a.volume = 0.01;
         a.play().catch(() => {});
+        // Keep a reference so iOS doesn't GC it before playback finishes
+        _iosUnlockAudio = a;
         a.addEventListener('ended', () => {
-            try { a.remove(); URL.revokeObjectURL(url); } catch (_) {}
+            try { URL.revokeObjectURL(url); } catch (_) {}
+            // Don't remove — keep in memory so the session stays in "playback"
         });
     } catch (_) {}
 }
@@ -1628,6 +1645,11 @@ function resumeAudioContext() {
         }
         if (toneCtx.resume) {
             toneCtx.resume();
+        }
+        // Re-trigger the iOS playback category unlock on every interaction.
+        // iOS can revert to "ambient" category when the context is interrupted.
+        if (_isIOS) {
+            _unlockIOSPlaybackCategory();
         }
     } catch (_) {}
     // Tone.start() is safe to call repeatedly
