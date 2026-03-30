@@ -1560,112 +1560,44 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
+    // --- iOS speaker fix ---
+    // On iOS, Web Audio can be silent because:
+    //   - The ringer/silent switch is on (mutes "ambient" audio category)
+    //   - Audio routes to earpiece instead of speaker
+    // Playing HTML5 <audio> first forces iOS into "playback" audio session,
+    // which bypasses the silent switch and routes to the speaker.
+    // We do NOT replace Tone's AudioContext — Tone.setContext() can break
+    // internal Tone.js state and cause total silence.
     try {
-        // --- iOS speaker fix ---
-        // On iOS, Web Audio routes to earpiece unless HTML5 Audio claims
-        // the speaker first. We play a short WAV, wait for the route to
-        // stabilise, then create a fresh AudioContext that inherits it.
+        const sampleRate = 8000;
+        const numSamples = sampleRate; // 1 second
+        const bytesPerSample = 2;
+        const dataSize = numSamples * bytesPerSample;
+        const buf = new ArrayBuffer(44 + dataSize);
+        const v = new DataView(buf);
+        const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+        w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
+        w(8, 'WAVE'); w(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+        v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+        v.setUint32(28, sampleRate * bytesPerSample, true);
+        v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
+        w(36, 'data'); v.setUint32(40, dataSize, true);
+        for (let i = 0; i < numSamples; i++) v.setInt16(44 + i * 2, 800, true);
 
-        // Step 1: Play HTML5 audio to claim speaker route (before touching AudioContext)
-        let speakerUnlock;
-        let blobUrl;
-        try {
-            const sampleRate = 16000;
-            const duration = 0.75;
-            const numSamples = Math.floor(sampleRate * duration);
-            const bytesPerSample = 2;
-            const dataSize = numSamples * bytesPerSample;
-            const buffer = new ArrayBuffer(44 + dataSize);
-            const view = new DataView(buffer);
+        const blob = new Blob([buf], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const a = new Audio(url);
+        a.setAttribute('playsinline', '');
+        a.volume = 1.0;
+        // Must play synchronously inside the user gesture — don't await
+        a.play().catch(() => {});
+        // Clean up after it finishes
+        a.addEventListener('ended', () => { a.remove(); URL.revokeObjectURL(url); });
+    } catch (_) {}
 
-            const writeStr = (offset, str) => {
-                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-            };
-            writeStr(0, 'RIFF');
-            view.setUint32(4, 36 + dataSize, true);
-            writeStr(8, 'WAVE');
-            writeStr(12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true);
-            view.setUint16(22, 1, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * bytesPerSample, true);
-            view.setUint16(32, bytesPerSample, true);
-            view.setUint16(34, 16, true);
-            writeStr(36, 'data');
-            view.setUint32(40, dataSize, true);
-
-            // Amplitude ~500/32767 ≈ -36 dB — loud enough for iOS to claim the
-            // speaker route, quiet enough to be effectively inaudible
-            for (let i = 0; i < numSamples; i++) {
-                view.setInt16(44 + i * 2, 500, true);
-            }
-
-            const blob = new Blob([buffer], { type: 'audio/wav' });
-            blobUrl = URL.createObjectURL(blob);
-            speakerUnlock = new Audio(blobUrl);
-            speakerUnlock.setAttribute('playsinline', '');
-            speakerUnlock.setAttribute('webkit-playsinline', '');
-            speakerUnlock.volume = 1.0;
-            speakerUnlock.muted = false;
-            speakerUnlock.style.display = 'none';
-            document.body.appendChild(speakerUnlock);
-
-            await new Promise((resolve) => {
-                const fallback = setTimeout(resolve, 600);
-                speakerUnlock.addEventListener('timeupdate', () => {
-                    clearTimeout(fallback);
-                    resolve();
-                }, { once: true });
-                speakerUnlock.play().catch(() => {
-                    clearTimeout(fallback);
-                    resolve();
-                });
-            });
-
-            // Let iOS establish the speaker route
-            await new Promise(r => setTimeout(r, 400));
-        } catch (_) {
-            // Speaker unlock is best-effort; continue to start audio
-        }
-
-        // Step 2: Close Tone's pre-existing context (may be earpiece-routed)
-        try {
-            const oldCtx = Tone.getContext().rawContext;
-            if (oldCtx && oldCtx.state !== 'closed') {
-                await oldCtx.close();
-            }
-        } catch (_) {}
-
-        // Step 3: Create a FRESH AudioContext that inherits the speaker route
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        const freshCtx = new AudioCtx();
-
-        // Nudge context into running state
-        try {
-            const silentBuf = freshCtx.createBuffer(1, 1, freshCtx.sampleRate);
-            const src = freshCtx.createBufferSource();
-            src.buffer = silentBuf;
-            src.connect(freshCtx.destination);
-            src.start(0);
-            if (freshCtx.state !== 'running') await freshCtx.resume();
-        } catch (_) {}
-
-        // Step 4: Hand the fresh context to Tone.js
-        Tone.setContext(freshCtx);
-        await Tone.start();
-
-        // Clean up speaker unlock element
-        if (speakerUnlock) { speakerUnlock.pause(); speakerUnlock.remove(); }
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
-
-    } catch (_) {
-        // Fallback: if the fresh-context approach fails entirely,
-        // just start Tone.js with whatever context it already has
-        try { await Tone.start(); } catch (_2) {}
-    }
-
-    // These MUST run no matter what — initialise audio graph and dismiss overlay
+    // Start Tone.js with its own context (don't replace it)
+    await Tone.start();
     initAudio();
     elements.overlay.classList.add('hidden');
 }
