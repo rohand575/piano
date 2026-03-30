@@ -1561,72 +1561,95 @@ function exitLearnMode() {
 
 // --- Audio Start (browser autoplay policy + iOS fixes) ---
 
-// Detect iOS/iPadOS — needed for platform-specific audio workarounds
+// Detect iOS/iPadOS — needed for platform-specific audio workarounds.
+// Covers iPhone, iPad (including iPadOS which reports as MacIntel).
 const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-// Unlock iOS "playback" audio category by playing an HTML5 <audio> element.
+// Persistent reference to the HTML5 Audio element used for iOS unlock.
+// Must survive GC so iOS keeps the audio session in "playback" category.
+let _iosUnlockAudio = null;
+
+// Build a minimal WAV file as a data URI.
+// Using a data URI avoids Blob/URL issues on some WebView implementations.
+const _silentWavDataURI = (function() {
+    const sampleRate = 22050;
+    const numSamples = sampleRate; // 1 full second
+    const bytesPerSample = 2;
+    const dataSize = numSamples * bytesPerSample;
+    const buf = new ArrayBuffer(44 + dataSize);
+    const v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
+    w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * bytesPerSample, true);
+    v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, dataSize, true);
+    // Write a very quiet click at the start — fully silent buffers
+    // don't always trigger the iOS audio category switch.
+    const samples = new Int16Array(buf, 44);
+    for (let i = 0; i < 100; i++) samples[i] = 1;
+
+    // Convert to base64 data URI
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(binary);
+})();
+
+// Force iOS into "playback" audio session category by playing an HTML5 <audio>.
 // iOS Safari defaults to "ambient" category for Web Audio, which:
 //   - Is silenced by the ringer/mute switch
-//   - May route to earpiece instead of speaker
-// Playing an <audio> element forces the session to "playback" category.
-// We keep a persistent reference so iOS doesn't garbage-collect it too early.
-let _iosUnlockAudio = null;
-let _iosUnlockLastCall = 0;
+//   - Routes to earpiece instead of speaker
+// Playing an <audio> element with actual audio data forces "playback" category.
 function _unlockIOSPlaybackCategory() {
     if (!_isIOS) return;
-    // Throttle: don't re-trigger more than once every 2 seconds
-    const now = Date.now();
-    if (now - _iosUnlockLastCall < 2000 && _iosUnlockLastCall > 0) return;
-    _iosUnlockLastCall = now;
     try {
-        // Create a short silent WAV with a tiny non-zero sample so iOS
-        // recognises actual audio output and switches to "playback" category.
-        const sampleRate = 8000;
-        const numSamples = 4000; // 0.5s — longer to ensure category switch
-        const bytesPerSample = 2;
-        const dataSize = numSamples * bytesPerSample;
-        const buf = new ArrayBuffer(44 + dataSize);
-        const v = new DataView(buf);
-        const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-        w(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
-        w(8, 'WAVE'); w(12, 'fmt ');
-        v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-        v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
-        v.setUint32(28, sampleRate * bytesPerSample, true);
-        v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
-        w(36, 'data'); v.setUint32(40, dataSize, true);
-        // Write a tiny non-zero pulse at the start — a truly silent buffer
-        // may not trigger the audio category switch on some iOS versions.
-        const samples = new Int16Array(buf, 44);
-        samples[0] = 1;
-
-        const blob = new Blob([buf], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-        const a = new Audio(url);
+        // Reuse existing element if it exists (don't create a new one each time)
+        if (_iosUnlockAudio) {
+            // If the previous element is done, replay it
+            if (_iosUnlockAudio.paused || _iosUnlockAudio.ended) {
+                _iosUnlockAudio.currentTime = 0;
+                _iosUnlockAudio.play().catch(() => {});
+            }
+            return;
+        }
+        const a = new Audio();
+        a.controls = false;
+        a.preload = 'auto';
+        a.loop = false;
         a.setAttribute('playsinline', '');
         a.setAttribute('webkit-playsinline', '');
-        // Volume must be audible (not near-zero) for iOS to honour
-        // the category switch; 1% is inaudible to humans but enough for iOS.
+        a.src = _silentWavDataURI;
+        // Volume low enough to be inaudible but high enough for iOS to register.
         a.volume = 0.01;
         a.play().catch(() => {});
-        // Keep a reference so iOS doesn't GC it before playback finishes
         _iosUnlockAudio = a;
-        a.addEventListener('ended', () => {
-            try { URL.revokeObjectURL(url); } catch (_) {}
-            // Don't remove — keep in memory so the session stays in "playback"
-        });
     } catch (_) {}
 }
 
-// Play a silent buffer through the native AudioContext to "unlock" it on iOS.
-// This is the technique used by Howler.js — iOS requires actual audio data
-// to flow through the context during a user gesture before it will produce sound.
+// Push a short silent buffer through a native AudioContext to "unlock" it.
+// iOS requires actual audio data to flow through the context during a user
+// gesture before it will produce sound. Using a longer buffer (2048 samples)
+// and lower sample rate (22050) increases compatibility.
+let _cachedSilentBuffer = null;
+let _cachedSilentBufferCtx = null;
 function _unlockWebAudioContext(ctx) {
     try {
-        const silentBuffer = ctx.createBuffer(1, 1, ctx.sampleRate || 44100);
+        // Cache the buffer so we don't re-allocate on every call
+        if (!_cachedSilentBuffer || _cachedSilentBufferCtx !== ctx) {
+            const sr = ctx.sampleRate || 22050;
+            _cachedSilentBuffer = ctx.createBuffer(1, 2048, sr);
+            // Fill with near-zero values (not exactly zero — some iOS builds
+            // optimise away pure-silence buffers and don't actually process them).
+            const data = _cachedSilentBuffer.getChannelData(0);
+            for (let i = 0; i < data.length; i++) data[i] = 1e-7;
+            _cachedSilentBufferCtx = ctx;
+        }
         const source = ctx.createBufferSource();
-        source.buffer = silentBuffer;
+        source.buffer = _cachedSilentBuffer;
         source.connect(ctx.destination);
         source.start(0);
         source.onended = () => { try { source.disconnect(); } catch (_) {} };
@@ -1637,73 +1660,86 @@ function _unlockWebAudioContext(ctx) {
 // iOS aggressively suspends contexts between gestures.
 function resumeAudioContext() {
     try {
-        // Get the raw native AudioContext from Tone.js and resume it directly
         const toneCtx = Tone.context;
         const rawCtx = toneCtx.rawContext || toneCtx._context || toneCtx;
-        if (rawCtx && rawCtx.resume) {
+
+        // Resume the raw AudioContext
+        if (rawCtx && rawCtx.state !== 'running' && rawCtx.resume) {
             rawCtx.resume();
         }
-        if (toneCtx.resume) {
+        // Also resume the Tone.js wrapper
+        if (toneCtx.state !== 'running' && toneCtx.resume) {
             toneCtx.resume();
         }
-        // Re-trigger the iOS playback category unlock on every interaction.
-        // iOS can revert to "ambient" category when the context is interrupted.
-        if (_isIOS) {
-            _unlockIOSPlaybackCategory();
+        // Push a silent buffer through on each interaction to keep iOS happy.
+        // Only needed on iOS — other platforms don't re-suspend aggressively.
+        if (_isIOS && rawCtx && rawCtx.state === 'running') {
+            _unlockWebAudioContext(rawCtx);
         }
     } catch (_) {}
+    // Re-trigger iOS playback category on every interaction.
+    // iOS can revert to "ambient" when the app is backgrounded/foregrounded.
+    if (_isIOS) {
+        _unlockIOSPlaybackCategory();
+    }
     // Tone.start() is safe to call repeatedly
-    Tone.start();
+    Tone.start().catch(() => {});
 }
 
 // Called synchronously on the very first user interaction.
-// This is where we create the AudioContext inside the user gesture (critical for iOS).
+// Critical: on iOS, AudioContext MUST be created/resumed inside a user gesture.
 function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // Step 1: Switch iOS to "playback" audio category via HTML5 Audio
+    // Step 1: Force iOS into "playback" audio category FIRST.
+    // This MUST happen before any AudioContext work so iOS routes to speaker.
     _unlockIOSPlaybackCategory();
 
-    // Step 2: Create a fresh AudioContext inside this user gesture.
-    // On iOS Safari, an AudioContext MUST be created (or resumed) during a
-    // user-initiated event (touchstart/click). Tone.js may have already
-    // created one lazily — if it's suspended and we can't resume it, we
-    // create a new one and inject it into Tone.js.
+    // Step 2: Create a brand-new AudioContext inside this user gesture.
+    // Tone.js v15 eagerly creates one at import time, which on iOS will be
+    // permanently suspended since it wasn't created during a user gesture.
+    // The safest approach is to always create a fresh one here.
     try {
-        const existingCtx = Tone.context;
-        const rawCtx = existingCtx.rawContext || existingCtx._context || existingCtx;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            const freshCtx = new AudioCtx();
 
-        if (rawCtx && rawCtx.state === 'suspended') {
-            rawCtx.resume();
-        }
-
-        // If still not running, create a brand-new AudioContext inside this gesture
-        if (!rawCtx || rawCtx.state !== 'running') {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) {
-                const freshCtx = new AudioCtx();
-                // Unlock the fresh context with a silent buffer
-                _unlockWebAudioContext(freshCtx);
-                // Tell Tone.js to use our context
-                Tone.setContext(freshCtx);
+            // iOS Safari bug: sample rate can change when switching tabs.
+            // Force 44100 if possible by recreating.
+            if (_isIOS && freshCtx.sampleRate !== 44100) {
+                try { freshCtx.close(); } catch (_) {}
+                // Can't force sample rate on iOS — just use what we get
             }
-        } else {
-            // Context exists and is running — just unlock it with a silent buffer
-            _unlockWebAudioContext(rawCtx);
-        }
-    } catch (_) {
-        // Fallback: just try Tone.start()
-    }
 
-    // Step 3: Call Tone.start() and resume
-    Tone.start();
+            // Unlock the context immediately with a silent buffer
+            _unlockWebAudioContext(freshCtx);
+
+            // Inject our fresh context into Tone.js, replacing the stale one
+            Tone.setContext(freshCtx);
+        }
+    } catch (_) {}
+
+    // Step 3: Tone.start() resolves the internal context resume promise.
+    // We also call resume directly for belt-and-suspenders safety.
+    Tone.start().catch(() => {});
     resumeAudioContext();
 
     // Step 4: Build the audio graph now that context is unlocked
     if (!volumeNode) {
         buildAudioGraph();
         startVisualizer();
+    }
+
+    // Step 5: On iOS, re-check after a short delay that audio is actually working.
+    // Sometimes the first attempt doesn't stick if iOS was slow to switch categories.
+    if (_isIOS) {
+        setTimeout(() => {
+            resumeAudioContext();
+        }, 100);
+        setTimeout(() => {
+            resumeAudioContext();
+        }, 500);
     }
 
     elements.overlay.classList.add('hidden');
@@ -1739,12 +1775,19 @@ function init() {
         resumeAudioContext();
     };
     document.addEventListener('touchstart', unlockOnTouch, { once: false, passive: true });
+    // touchend is required for iOS 9+ — touchstart alone doesn't always unlock
+    document.addEventListener('touchend', unlockOnTouch, { once: false, passive: true });
     document.addEventListener('click', unlockOnTouch, { once: false });
 
     // Resume AudioContext when returning to the tab
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && audioStarted) {
+            // iOS may have suspended the context while backgrounded
             resumeAudioContext();
+            // Re-trigger after a delay — iOS can be slow to hand audio back
+            if (_isIOS) {
+                setTimeout(resumeAudioContext, 300);
+            }
         }
     });
 
