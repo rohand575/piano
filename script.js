@@ -1203,19 +1203,24 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // On mobile (especially iOS), Web Audio routes to the earpiece by default.
-    // Playing an HTML5 <audio> element first claims the loudspeaker output.
-    // The audio must be non-silent and long enough for the OS to register it.
+    // --- iOS speaker fix ---
+    // On iOS (Safari & Chrome/WKWebView), the Web Audio API AudioContext
+    // created at page load gets routed to the earpiece. To force loudspeaker:
+    //   1. Play an HTML5 <audio> element (claims the media/speaker route)
+    //   2. Wait for actual audio output
+    //   3. Create a FRESH AudioContext (inherits the speaker route)
+    //   4. Hand it to Tone.js before Tone.start()
+
+    // Step 1 & 2: Play HTML5 audio to claim speaker route
     try {
         const sampleRate = 8000;
-        const duration = 0.5; // half a second
+        const duration = 0.5;
         const numSamples = sampleRate * duration;
         const bytesPerSample = 2;
         const dataSize = numSamples * bytesPerSample;
         const buffer = new ArrayBuffer(44 + dataSize);
         const view = new DataView(buffer);
 
-        // WAV header
         const writeStr = (offset, str) => {
             for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
         };
@@ -1224,16 +1229,16 @@ async function ensureAudioStarted() {
         writeStr(8, 'WAVE');
         writeStr(12, 'fmt ');
         view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);           // PCM
-        view.setUint16(22, 1, true);           // mono
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
         view.setUint32(24, sampleRate, true);
         view.setUint32(28, sampleRate * bytesPerSample, true);
         view.setUint16(32, bytesPerSample, true);
-        view.setUint16(34, 16, true);          // bits per sample
+        view.setUint16(34, 16, true);
         writeStr(36, 'data');
         view.setUint32(40, dataSize, true);
 
-        // Near-silent samples (amplitude 1 out of 32767 — inaudible but non-zero)
+        // Near-silent but non-zero samples (inaudible, amplitude 1/32767)
         for (let i = 0; i < numSamples; i++) {
             view.setInt16(44 + i * 2, 1, true);
         }
@@ -1242,13 +1247,37 @@ async function ensureAudioStarted() {
         const url = URL.createObjectURL(blob);
         const speakerUnlock = new Audio(url);
         speakerUnlock.setAttribute('playsinline', '');
-        speakerUnlock.volume = 1.0; // Must be non-zero to claim loudspeaker
-        await speakerUnlock.play();
-        // Clean up after playback
-        speakerUnlock.addEventListener('ended', () => URL.revokeObjectURL(url));
+        speakerUnlock.volume = 1.0;
+
+        // Wait for actual audio output, not just the play() promise
+        await new Promise((resolve) => {
+            speakerUnlock.addEventListener('playing', resolve, { once: true });
+            speakerUnlock.play().catch(resolve);
+        });
+
+        // Give iOS time to establish the speaker route
+        await new Promise(r => setTimeout(r, 200));
+
+        speakerUnlock.addEventListener('ended', () => {
+            speakerUnlock.remove();
+            URL.revokeObjectURL(url);
+        });
     } catch (_) {
-        // Fallback: continue even if speaker unlock fails
+        // Continue even if speaker unlock fails (desktop, etc.)
     }
+
+    // Step 3 & 4: Close Tone's pre-existing context and create a fresh one
+    // so it inherits the speaker route established above
+    try {
+        const oldCtx = Tone.getContext().rawContext;
+        if (oldCtx && oldCtx.state !== 'closed') {
+            await oldCtx.close();
+        }
+    } catch (_) {}
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const freshCtx = new AudioCtx();
+    Tone.setContext(freshCtx);
 
     await Tone.start();
     initAudio();
@@ -1260,9 +1289,12 @@ async function ensureAudioStarted() {
 function init() {
     cacheElements();
 
-    // Overlay click/touch — touchstart is needed on mobile to unlock audio on first tap
+    // Overlay click/touch — use touchend on iOS (more reliable for audio unlock)
     elements.overlay.addEventListener('click', () => ensureAudioStarted());
-    elements.overlay.addEventListener('touchstart', () => ensureAudioStarted(), { once: true });
+    elements.overlay.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        ensureAudioStarted();
+    }, { once: true });
 
     // Keyboard events
     document.addEventListener('keydown', async (e) => {
