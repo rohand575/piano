@@ -35,446 +35,204 @@
     <!-- App Container -->
     <div id="app">
 
-        <!-- Main Layout: Sidebar + Piano -->
-        <div class="app-layout">
+        <!-- Top Toolbar Ribbon -->
+        <header class="toolbar-ribbon glass-panel">
+            <!-- Logo -->
+            <div class="toolbar-logo">
+                <h1 class="logo">KeyMuse <span>Piano</span></h1>
+            </div>
 
-            <!-- Left Sidebar -->
-            <aside class="sidebar glass-panel">
-                <!-- Header / Logo -->
-                <div class="sidebar-header">
-                    <h1 class="logo">KeyMuse <span>Piano</span></h1>
-                    <p class="tagline">Play &middot; Record &middot; Create</p>
-                </div>
+            <!-- Note Display Badge -->
+            <div class="toolbar-note-badge">
+                <span id="current-note">&mdash;</span>
+                <span id="sustain-indicator" class="sustain-indicator">SUSTAIN</span>
+            </div>
 
-                <!-- Note Display -->
-                <div id="note-display" class="note-display">
-                    <span id="current-note">&mdash;</span>
-                    <span id="sustain-indicator" class="sustain-indicator">SUSTAIN</span>
-                </div>
-
-                <!-- Controls -->
-                <div class="controls">
-                    <!-- Volume Control -->
-                    <div class="control-group">
-                        <label for="volume-slider">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                            </svg>
-                            Volume
-                        </label>
-                        <div class="control-row">
-                            <input type="range" id="volume-slider" min="0" max="100" value="75">
-                            <span id="volume-value">75%</span>
-                        </div>
-                    </div>
-
-                    <!-- Instrument Selector -->
-                    <div class="control-group">
-                        <label for="instrument-select">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18V5l12-2v13"/>
-                                <circle cx="6" cy="18" r="3"/>
-                                <circle cx="18" cy="16" r="3"/>
-                            </svg>
-                            Instrument
-                        </label>
-                        <select id="instrument-select">
-                            <option value="piano">Piano</option>
-                            <option value="electric">Electric</option>
-                            <option value="organ">Organ</option>
-                            <option value="synth">Synth</option>
-                            <option value="warm">Warm</option>
-                            <option value="bell">Bell</option>
-                        </select>
-                    </div>
-
-                    <!-- Octave Selector -->
-                    <div class="control-group">
-                        <label>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-                            </svg>
-                            Octave
-                        </label>
-                        <div class="octave-controls">
-                            <button id="octave-down" aria-label="Octave down">&minus;</button>
-                            <span id="octave-display">4</span>
-                            <button id="octave-up" aria-label="Octave up">+</button>
-                        </div>
-                    </div>
-
-                    <!-- Effects -->
-                    <div class="control-group">
-                        <label>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 12h4l3-9 4 18 3-9h4"/>
-                            </svg>
-                            Effects
-                        </label>
-                        <div class="effects-controls">
-                            <button id="reverb-btn" class="btn btn-effect" aria-label="Toggle reverb">Reverb</button>
-                            <button id="delay-btn" class="btn btn-effect" aria-label="Toggle delay">Delay</button>
-                        </div>
-                    </div>
-
-                    <!-- Recording Controls -->
-                    <div class="control-group">
-                        <label>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="10"/>
-                                <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                            Recording
-                        </label>
-                        <div class="recording-controls">
-                            <button id="record-btn" class="btn btn-record" aria-label="Record">
-                                <span class="record-dot"></span>
-                                Record
-                            </button>
-                            <button id="play-btn" class="btn btn-play" disabled aria-label="Play recording">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                    <polygon points="5 3 19 12 5 21 5 3"/>
-                                </svg>
-                                Play
-                            </button>
-                            <button id="clear-btn" class="btn btn-clear" disabled aria-label="Clear recording">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="3 6 5 6 21 6"/>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                </svg>
-                                Clear
-                            </button>
-                        </div>
-                        <span id="recording-indicator" class="recording-indicator hidden">REC</span>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Right: Piano Area -->
-            <main class="main-content">
-                <div class="piano-container">
-                    <div class="piano-stage">
-                        <div class="piano-roll-container">
-                            <canvas id="piano-roll"></canvas>
-                        </div>
-                        <div id="piano" class="piano" role="application" aria-label="Piano keyboard">
-                            <!-- Keys generated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </main>
-
-        </div>
-
-        <!-- How to Play Panel -->
-        <div class="how-to-play glass-panel">
-            <button id="how-to-play-toggle" class="panel-toggle" aria-expanded="false">
-                <span class="toggle-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    How to Play
-                </span>
-                <svg class="toggle-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="6 9 12 15 18 9"/>
+            <!-- Hamburger Toggle (mobile only) -->
+            <button id="toolbar-hamburger" class="toolbar-btn toolbar-hamburger" aria-label="Toggle controls" aria-expanded="false">
+                <svg class="hamburger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+                <svg class="close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
             </button>
 
-            <div id="how-to-play-content" class="panel-content collapsed">
-                <!-- Tabs -->
-                <div class="tab-bar">
-                    <button class="tab active" data-tab="mapping">Key Mapping</button>
-                    <button class="tab" data-tab="guide">Beginner Guide</button>
-                    <button class="tab" data-tab="exercises">Exercises</button>
-                    <button class="tab" data-tab="tips">Tips</button>
-                </div>
-
-                <!-- Tab: Key Mapping -->
-                <div id="tab-mapping" class="tab-panel active">
-                    <div class="mapping-grid">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Keyboard Key</th>
-                                    <th>Note</th>
-                                    <th>Type</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td><kbd>A</kbd></td><td>C</td><td>White</td></tr>
-                                <tr class="sharp-row"><td><kbd>W</kbd></td><td>C#</td><td>Black</td></tr>
-                                <tr><td><kbd>S</kbd></td><td>D</td><td>White</td></tr>
-                                <tr class="sharp-row"><td><kbd>E</kbd></td><td>D#</td><td>Black</td></tr>
-                                <tr><td><kbd>D</kbd></td><td>E</td><td>White</td></tr>
-                                <tr><td><kbd>F</kbd></td><td>F</td><td>White</td></tr>
-                                <tr class="sharp-row"><td><kbd>T</kbd></td><td>F#</td><td>Black</td></tr>
-                                <tr><td><kbd>G</kbd></td><td>G</td><td>White</td></tr>
-                                <tr class="sharp-row"><td><kbd>Y</kbd></td><td>G#</td><td>Black</td></tr>
-                                <tr><td><kbd>H</kbd></td><td>A</td><td>White</td></tr>
-                                <tr class="sharp-row"><td><kbd>U</kbd></td><td>A#</td><td>Black</td></tr>
-                                <tr><td><kbd>J</kbd></td><td>B</td><td>White</td></tr>
-                                <tr><td><kbd>K</kbd></td><td>C (next octave)</td><td>White</td></tr>
-                                <tr><td colspan="3" style="padding-top: 1rem; border-bottom: none;">
-                                    <strong style="color: var(--text-muted);">Shortcuts</strong>
-                                </td></tr>
-                                <tr><td><kbd>Space</kbd></td><td colspan="2">Sustain Pedal (hold)</td></tr>
-                                <tr><td><kbd>Z</kbd> / <kbd>X</kbd></td><td colspan="2">Octave Down / Up</td></tr>
-                            </tbody>
-                        </table>
+            <!-- Controls Group -->
+            <div class="toolbar-controls">
+                <!-- Instrument Dropdown -->
+                <div class="toolbar-dropdown">
+                    <button class="toolbar-btn dropdown-trigger" id="instrument-dropdown-btn" aria-haspopup="true" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 18V5l12-2v13"/>
+                            <circle cx="6" cy="18" r="3"/>
+                            <circle cx="18" cy="16" r="3"/>
+                        </svg>
+                        <span class="toolbar-btn-label" id="instrument-label">Piano</span>
+                        <svg class="dropdown-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="dropdown-menu" id="instrument-menu">
+                        <button class="dropdown-item active" data-value="piano">Piano</button>
+                        <button class="dropdown-item" data-value="electric">Electric</button>
+                        <button class="dropdown-item" data-value="organ">Organ</button>
+                        <button class="dropdown-item" data-value="synth">Synth</button>
+                        <button class="dropdown-item" data-value="warm">Warm</button>
+                        <button class="dropdown-item" data-value="bell">Bell</button>
                     </div>
                 </div>
 
-                <!-- Tab: Beginner Guide -->
-                <div id="tab-guide" class="tab-panel">
-                    <div class="guide-content">
-                        <div class="guide-step">
-                            <div class="step-number">1</div>
-                            <div class="step-text">
-                                <h4>Get Started</h4>
-                                <p>Place your left hand on the home row keys (A, S, D, F) and your right hand on (G, H, J, K). These correspond to the white keys C through C of the next octave.</p>
-                            </div>
-                        </div>
-                        <div class="guide-step">
-                            <div class="step-number">2</div>
-                            <div class="step-text">
-                                <h4>Play White Keys</h4>
-                                <p>Press A through K to play the natural notes (C, D, E, F, G, A, B, C). Try pressing them in order to hear the C major scale.</p>
-                            </div>
-                        </div>
-                        <div class="guide-step">
-                            <div class="step-number">3</div>
-                            <div class="step-text">
-                                <h4>Add Sharps &amp; Flats</h4>
-                                <p>Use the top row keys (W, E, T, Y, U) to play the black keys (sharps/flats). These sit between certain white keys.</p>
-                            </div>
-                        </div>
-                        <div class="guide-step">
-                            <div class="step-number">4</div>
-                            <div class="step-text">
-                                <h4>Change Octaves</h4>
-                                <p>Use the octave controls above the piano to shift the pitch range up or down. Lower octaves produce deeper tones, higher octaves produce brighter ones.</p>
-                            </div>
-                        </div>
-                        <div class="guide-step">
-                            <div class="step-number">5</div>
-                            <div class="step-text">
-                                <h4>Record &amp; Playback</h4>
-                                <p>Click Record, play your melody, then click Record again to stop. Press Play to hear your creation. Use Clear to start fresh.</p>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Volume Control -->
+                <div class="toolbar-volume">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                    </svg>
+                    <input type="range" id="volume-slider" min="0" max="100" value="75">
+                    <span id="volume-value">75%</span>
                 </div>
 
-                <!-- Tab: Exercises -->
-                <div id="tab-exercises" class="tab-panel">
-                    <div class="exercises-content">
-                        <div class="exercise">
-                            <h4>Exercise 1: C Major Scale</h4>
-                            <p>Play these keys in order, one at a time:</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd>
-                            </div>
-                            <p class="exercise-notes">C - D - E - F - G - A - B - C</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 2: Mary Had a Little Lamb</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>S</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>D</kbd><kbd>D</kbd>
-                            </div>
-                            <p class="exercise-notes">E - D - C - D - E - E - E</p>
-                            <div class="note-sequence">
-                                <kbd>S</kbd><kbd>S</kbd><kbd>S</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>G</kbd><kbd>G</kbd>
-                            </div>
-                            <p class="exercise-notes">D - D - D &nbsp;&nbsp; E - G - G</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>S</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>D</kbd><kbd>D</kbd><kbd>D</kbd><kbd>S</kbd><kbd>S</kbd><kbd>D</kbd><kbd>S</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">E - D - C - D - E - E - E - E - D - D - E - D - C</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 3: Twinkle Twinkle Little Star</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>A</kbd><kbd>G</kbd><kbd>G</kbd><kbd>H</kbd><kbd>H</kbd><kbd>G</kbd>
-                            </div>
-                            <p class="exercise-notes">C - C - G - G - A - A - G</p>
-                            <div class="note-sequence">
-                                <kbd>F</kbd><kbd>F</kbd><kbd>D</kbd><kbd>D</kbd><kbd>S</kbd><kbd>S</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">F - F - E - E - D - D - C</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 4: Chord Practice</h4>
-                            <p>Press these keys together (simultaneously):</p>
-                            <div class="chord-group">
-                                <div class="chord">
-                                    <span class="chord-name">C Major</span>
-                                    <div class="note-sequence"><kbd>A</kbd><kbd>D</kbd><kbd>G</kbd></div>
-                                    <p class="exercise-notes">C - E - G</p>
-                                </div>
-                                <div class="chord">
-                                    <span class="chord-name">F Major</span>
-                                    <div class="note-sequence"><kbd>F</kbd><kbd>H</kbd><kbd>K</kbd></div>
-                                    <p class="exercise-notes">F - A - C</p>
-                                </div>
-                                <div class="chord">
-                                    <span class="chord-name">G Major</span>
-                                    <div class="note-sequence"><kbd>G</kbd><kbd>J</kbd><kbd>S</kbd></div>
-                                    <p class="exercise-notes">G - B - D</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 5: Ode to Joy (Beethoven)</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>&nbsp;&nbsp;<kbd>G</kbd><kbd>F</kbd><kbd>D</kbd><kbd>S</kbd>&nbsp;&nbsp;<kbd>A</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>S</kbd><kbd>S</kbd>
-                            </div>
-                            <p class="exercise-notes">E - E - F - G &nbsp; G - F - E - D &nbsp; C - C - D - E &nbsp; E - D - D</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>&nbsp;&nbsp;<kbd>G</kbd><kbd>F</kbd><kbd>D</kbd><kbd>S</kbd>&nbsp;&nbsp;<kbd>A</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>&nbsp;&nbsp;<kbd>S</kbd><kbd>A</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">E - E - F - G &nbsp; G - F - E - D &nbsp; C - C - D - E &nbsp; D - C - C</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 6: Happy Birthday</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>A</kbd><kbd>S</kbd><kbd>A</kbd><kbd>F</kbd><kbd>D</kbd>
-                            </div>
-                            <p class="exercise-notes">"Happy birthday to you" &mdash; C - C - D - C - F - E</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>A</kbd><kbd>S</kbd><kbd>A</kbd><kbd>G</kbd><kbd>F</kbd>
-                            </div>
-                            <p class="exercise-notes">"Happy birthday to you" &mdash; C - C - D - C - G - F</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>A</kbd><kbd>K</kbd><kbd>H</kbd><kbd>F</kbd><kbd>D</kbd><kbd>S</kbd>
-                            </div>
-                            <p class="exercise-notes">"Happy birthday dear..." &mdash; C - C - C' - A - F - E - D</p>
-                            <div class="note-sequence">
-                                <kbd>U</kbd><kbd>U</kbd><kbd>H</kbd><kbd>F</kbd><kbd>G</kbd><kbd>F</kbd>
-                            </div>
-                            <p class="exercise-notes">"Happy birthday to you" &mdash; A# - A# - A - F - G - F</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 7: Jingle Bells (Chorus)</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>D</kbd><kbd>D</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>D</kbd><kbd>D</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>G</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
-                            </div>
-                            <p class="exercise-notes">"Jingle bells, jingle bells, jingle all the way" &mdash; E - E - E &nbsp; E - E - E &nbsp; E - G - C - D - E</p>
-                            <div class="note-sequence">
-                                <kbd>F</kbd><kbd>F</kbd><kbd>F</kbd><kbd>F</kbd>&nbsp;&nbsp;<kbd>F</kbd><kbd>D</kbd><kbd>D</kbd><kbd>D</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>S</kbd><kbd>S</kbd><kbd>D</kbd><kbd>S</kbd><kbd>G</kbd>
-                            </div>
-                            <p class="exercise-notes">"Oh what fun it is to ride..." &mdash; F - F - F - F &nbsp; F - E - E - E &nbsp; E - D - D - E - D - G</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 8: F&uuml;r Elise (Opening Theme)</h4>
-                            <p>The iconic Beethoven opening:</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>E</kbd><kbd>D</kbd><kbd>E</kbd><kbd>D</kbd><kbd>J</kbd><kbd>S</kbd><kbd>A</kbd><kbd>H</kbd>
-                            </div>
-                            <p class="exercise-notes">E - D# - E - D# - E - B - D - C - A</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>D</kbd><kbd>H</kbd><kbd>J</kbd>
-                            </div>
-                            <p class="exercise-notes">C - E - A - B</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>Y</kbd><kbd>J</kbd><kbd>K</kbd>
-                            </div>
-                            <p class="exercise-notes">E - G# - B - C'</p>
-                            <p class="exercise-hint">Then repeat from the beginning!</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 9: Hot Cross Buns</h4>
-                            <p>A simple classic &mdash; great for beginners:</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>S</kbd><kbd>A</kbd>&nbsp;&nbsp;&nbsp;<kbd>D</kbd><kbd>S</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">"Hot cross buns, hot cross buns" &mdash; E - D - C &nbsp; E - D - C</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>A</kbd><kbd>S</kbd><kbd>S</kbd><kbd>D</kbd><kbd>S</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">"One a penny, two a penny" &mdash; C - C - D - D - E - D - C</p>
-                        </div>
-                        <div class="exercise">
-                            <h4>Exercise 10: When the Saints Go Marching In</h4>
-                            <p>Follow this sequence:</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>&nbsp;&nbsp;<kbd>A</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>
-                            </div>
-                            <p class="exercise-notes">"Oh when the saints go marching in" &mdash; C - E - F - G &nbsp; C - E - F - G</p>
-                            <div class="note-sequence">
-                                <kbd>A</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>A</kbd><kbd>D</kbd><kbd>S</kbd>
-                            </div>
-                            <p class="exercise-notes">"Oh when the saints go marching" &mdash; C - E - F - G &nbsp; E - C - E - D</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>D</kbd><kbd>S</kbd><kbd>A</kbd>&nbsp;&nbsp;<kbd>A</kbd><kbd>D</kbd><kbd>G</kbd><kbd>G</kbd><kbd>F</kbd>
-                            </div>
-                            <p class="exercise-notes">"in, oh Lord I want to be" &mdash; E - E - D - C &nbsp; C - E - G - G - F</p>
-                            <div class="note-sequence">
-                                <kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>&nbsp;&nbsp;<kbd>D</kbd><kbd>A</kbd><kbd>S</kbd><kbd>A</kbd>
-                            </div>
-                            <p class="exercise-notes">"in that number" &mdash; E - F - G &nbsp; E - C - D - C</p>
-                        </div>
-                    </div>
+                <!-- Octave Controls -->
+                <div class="toolbar-octave">
+                    <button id="octave-down" class="toolbar-btn toolbar-btn-sm" aria-label="Octave down">&minus;</button>
+                    <span id="octave-display" class="octave-badge">4</span>
+                    <button id="octave-up" class="toolbar-btn toolbar-btn-sm" aria-label="Octave up">+</button>
                 </div>
 
-                <!-- Tab: Tips -->
-                <div id="tab-tips" class="tab-panel">
-                    <div class="tips-content">
-                        <div class="tip">
-                            <div class="tip-icon">&#9835;</div>
-                            <div class="tip-text">
-                                <h4>Start Slow</h4>
-                                <p>Practice each exercise slowly at first. Speed will come naturally with muscle memory. Focus on accuracy over speed.</p>
-                            </div>
-                        </div>
-                        <div class="tip">
-                            <div class="tip-icon">&#9834;</div>
-                            <div class="tip-text">
-                                <h4>Listen Carefully</h4>
-                                <p>Pay attention to how each note sounds. Try to recognize intervals&mdash;the distance between two notes. This builds your ear for music.</p>
-                            </div>
-                        </div>
-                        <div class="tip">
-                            <div class="tip-icon">&#9833;</div>
-                            <div class="tip-text">
-                                <h4>Use the Recording Feature</h4>
-                                <p>Record yourself playing and listen back. It helps you identify mistakes and track your progress over time.</p>
-                            </div>
-                        </div>
-                        <div class="tip">
-                            <div class="tip-icon">&#9839;</div>
-                            <div class="tip-text">
-                                <h4>Explore Octaves</h4>
-                                <p>Try playing the same melody in different octaves. Notice how the character of the music changes with higher or lower pitches.</p>
-                            </div>
-                        </div>
-                        <div class="tip">
-                            <div class="tip-icon">&#119070;</div>
-                            <div class="tip-text">
-                                <h4>Practice Daily</h4>
-                                <p>Even 10 minutes of daily practice is better than an hour once a week. Consistency builds lasting musical skill.</p>
-                            </div>
-                        </div>
-                        <div class="tip">
-                            <div class="tip-icon">&#127929;</div>
-                            <div class="tip-text">
-                                <h4>Experiment Freely</h4>
-                                <p>Don't just follow exercises. Try playing random keys, create your own melodies, and have fun. Creativity is the heart of music.</p>
-                            </div>
-                        </div>
+                <!-- Effects -->
+                <div class="toolbar-effects">
+                    <button id="reverb-btn" class="toolbar-btn toolbar-btn-icon" aria-label="Toggle reverb" title="Reverb">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12h4l3-9 4 18 3-9h4"/>
+                        </svg>
+                    </button>
+                    <button id="delay-btn" class="toolbar-btn toolbar-btn-icon" aria-label="Toggle delay" title="Delay">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div class="toolbar-divider"></div>
+
+                <!-- Recording Controls -->
+                <div class="toolbar-recording">
+                    <button id="record-btn" class="toolbar-btn toolbar-btn-record" aria-label="Record">
+                        <span class="record-dot"></span>
+                    </button>
+                    <button id="play-btn" class="toolbar-btn toolbar-btn-icon" disabled aria-label="Play recording">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                    </button>
+                    <button id="clear-btn" class="toolbar-btn toolbar-btn-icon" disabled aria-label="Clear recording">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                    </button>
+                    <span id="recording-indicator" class="recording-indicator hidden">REC</span>
+                </div>
+            </div>
+
+            <!-- Learn Button (Right Side) -->
+            <button id="learn-toggle-btn" class="toolbar-btn toolbar-btn-learn" aria-label="Open Learn Mode">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                </svg>
+                <span>Learn</span>
+            </button>
+        </header>
+
+        <!-- Main Piano Area -->
+        <main class="main-content">
+            <!-- Note Prompt Strip (for Learn Mode) -->
+            <div id="note-prompt-strip" class="note-prompt-strip hidden">
+                <div class="prompt-song-title">
+                    <span id="learn-song-title">Select a song</span>
+                    <button id="exit-learn-btn" class="prompt-exit-btn" aria-label="Exit Learn Mode">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="prompt-notes">
+                    <div id="prompt-keys" class="prompt-keys">
+                        <!-- Filled by JS: upcoming keys to press -->
+                    </div>
+                </div>
+                <div class="prompt-progress">
+                    <div class="progress-bar">
+                        <div id="learn-progress-fill" class="progress-fill"></div>
+                    </div>
+                    <span id="learn-progress-text">0%</span>
+                </div>
+            </div>
+
+            <div class="piano-container">
+                <div class="piano-stage">
+                    <div class="piano-roll-container">
+                        <canvas id="piano-roll"></canvas>
+                    </div>
+                    <div id="piano" class="piano" role="application" aria-label="Piano keyboard">
+                        <!-- Keys generated by JavaScript -->
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
+
+        <!-- Floating Learn Panel (Right Side) -->
+        <aside id="learn-panel" class="learn-panel glass-panel">
+            <div class="learn-panel-header">
+                <h2>Learn Songs</h2>
+                <button id="learn-panel-close" class="panel-close-btn" aria-label="Close panel">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="learn-panel-content">
+                <!-- Difficulty Filter -->
+                <div class="learn-filters">
+                    <button class="filter-btn active" data-difficulty="all">All</button>
+                    <button class="filter-btn" data-difficulty="beginner">Beginner</button>
+                    <button class="filter-btn" data-difficulty="intermediate">Intermediate</button>
+                </div>
+                <!-- Song List -->
+                <ul id="song-list" class="song-list">
+                    <!-- Populated by JavaScript -->
+                </ul>
+                <!-- Key Guide Toggle -->
+                <div class="learn-panel-footer">
+                    <button id="key-guide-toggle" class="key-guide-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Key Guide
+                    </button>
+                </div>
+            </div>
+            <!-- Key Guide Drawer -->
+            <div id="key-guide-drawer" class="key-guide-drawer">
+                <div class="key-guide-content">
+                    <h3>Keyboard Mapping</h3>
+                    <div class="key-guide-grid">
+                        <div class="key-row white-keys">
+                            <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd>
+                        </div>
+                        <div class="key-row note-labels">
+                            <span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>A</span><span>B</span><span>C</span>
+                        </div>
+                        <div class="key-row black-keys">
+                            <kbd>W</kbd><kbd>E</kbd><span></span><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd>
+                        </div>
+                        <div class="key-row note-labels black-labels">
+                            <span>C#</span><span>D#</span><span></span><span>F#</span><span>G#</span><span>A#</span>
+                        </div>
+                    </div>
+                    <p class="key-guide-tip"><kbd>Space</kbd> = Sustain &nbsp;&nbsp; <kbd>Z</kbd>/<kbd>X</kbd> = Octave</p>
+                </div>
+            </div>
+        </aside>
 
         <!-- Footer -->
         <footer class="footer">

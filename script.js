@@ -33,6 +33,139 @@ const NOTE_THEME = {
 
 const DEFAULT_PARTICLE_COLOR = 'rgba(99, 102, 241, 0.4)';
 
+// --- Song Library for Learn Mode ---
+const SONG_LIBRARY = [
+    {
+        id: 1,
+        title: 'C Major Scale',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' },
+            { key: 'g', note: 'G' }, { key: 'h', note: 'A' }, { key: 'j', note: 'B' }, { key: 'k', note: 'C' }
+        ]
+    },
+    {
+        id: 2,
+        title: 'Mary Had a Little Lamb',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 's', note: 'D' }, { key: 's', note: 'D' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 'g', note: 'G' }, { key: 'g', note: 'G' },
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 's', note: 'D' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }
+        ]
+    },
+    {
+        id: 3,
+        title: 'Twinkle Twinkle',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 'g', note: 'G' }, { key: 'g', note: 'G' },
+            { key: 'h', note: 'A' }, { key: 'h', note: 'A' }, { key: 'g', note: 'G' },
+            { key: 'f', note: 'F' }, { key: 'f', note: 'F' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 's', note: 'D' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }
+        ]
+    },
+    {
+        id: 4,
+        title: 'Hot Cross Buns',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' },
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' },
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }
+        ]
+    },
+    {
+        id: 5,
+        title: 'Ode to Joy',
+        difficulty: 'intermediate',
+        notes: [
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'g', note: 'G' }, { key: 'f', note: 'F' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' },
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' },
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'g', note: 'G' }, { key: 'f', note: 'F' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' },
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' },
+            { key: 's', note: 'D' }, { key: 'a', note: 'C' }, { key: 'a', note: 'C' }
+        ]
+    },
+    {
+        id: 6,
+        title: 'Happy Birthday',
+        difficulty: 'intermediate',
+        notes: [
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' },
+            { key: 'f', note: 'F' }, { key: 'd', note: 'E' },
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' },
+            { key: 'g', note: 'G' }, { key: 'f', note: 'F' },
+            { key: 'a', note: 'C' }, { key: 'a', note: 'C' }, { key: 'k', note: 'C' }, { key: 'h', note: 'A' },
+            { key: 'f', note: 'F' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' }
+        ]
+    },
+    {
+        id: 7,
+        title: 'Jingle Bells',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 'd', note: 'E' }, { key: 'g', note: 'G' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' },
+            { key: 'f', note: 'F' }, { key: 'f', note: 'F' }, { key: 'f', note: 'F' }, { key: 'f', note: 'F' },
+            { key: 'f', note: 'F' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 'd', note: 'E' },
+            { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 's', note: 'D' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'g', note: 'G' }
+        ]
+    },
+    {
+        id: 8,
+        title: 'Für Elise (Opening)',
+        difficulty: 'intermediate',
+        notes: [
+            { key: 'd', note: 'E' }, { key: 'e', note: 'D#' }, { key: 'd', note: 'E' }, { key: 'e', note: 'D#' },
+            { key: 'd', note: 'E' }, { key: 'j', note: 'B' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }, { key: 'h', note: 'A' },
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'h', note: 'A' }, { key: 'j', note: 'B' },
+            { key: 'd', note: 'E' }, { key: 'y', note: 'G#' }, { key: 'j', note: 'B' }, { key: 'k', note: 'C' }
+        ]
+    },
+    {
+        id: 9,
+        title: 'When the Saints',
+        difficulty: 'beginner',
+        notes: [
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'd', note: 'E' }, { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' },
+            { key: 'd', note: 'E' }, { key: 'd', note: 'E' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' },
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'g', note: 'G' }, { key: 'g', note: 'G' }, { key: 'f', note: 'F' },
+            { key: 'd', note: 'E' }, { key: 'f', note: 'F' }, { key: 'g', note: 'G' },
+            { key: 'd', note: 'E' }, { key: 'a', note: 'C' }, { key: 's', note: 'D' }, { key: 'a', note: 'C' }
+        ]
+    },
+    {
+        id: 10,
+        title: 'Chord Practice',
+        difficulty: 'intermediate',
+        notes: [
+            { key: 'a', note: 'C' }, { key: 'd', note: 'E' }, { key: 'g', note: 'G' },
+            { key: 'f', note: 'F' }, { key: 'h', note: 'A' }, { key: 'k', note: 'C' },
+            { key: 'g', note: 'G' }, { key: 'j', note: 'B' }, { key: 's', note: 'D' }
+        ]
+    }
+];
+
+// --- Learn Mode State ---
+let learnModeActive = false;
+let currentSong = null;
+let currentNoteIndex = 0;
+let learnStartTime = 0;
+let correctNotes = 0;
+
 let particles = [];
 let particleCanvas = null;
 let particleCtx = null;
@@ -271,14 +404,31 @@ function cacheElements() {
     elements.playBtn = document.getElementById('play-btn');
     elements.clearBtn = document.getElementById('clear-btn');
     elements.recordingIndicator = document.getElementById('recording-indicator');
-    elements.howToPlayToggle = document.getElementById('how-to-play-toggle');
-    elements.howToPlayContent = document.getElementById('how-to-play-content');
-    elements.instrumentSelect = document.getElementById('instrument-select');
     elements.reverbBtn = document.getElementById('reverb-btn');
     elements.delayBtn = document.getElementById('delay-btn');
     elements.sustainIndicator = document.getElementById('sustain-indicator');
     elements.visualizer = document.getElementById('visualizer');
     elements.spectrum = document.getElementById('spectrum');
+    
+    // New toolbar elements
+    elements.instrumentBtn = document.getElementById('instrument-btn');
+    elements.instrumentDropdown = document.getElementById('instrument-dropdown');
+    
+    // Learn panel elements
+    elements.learnToggleBtn = document.getElementById('learn-toggle-btn');
+    elements.learnPanel = document.getElementById('learn-panel');
+    elements.learnPanelClose = document.getElementById('learn-panel-close');
+    elements.songList = document.getElementById('song-list');
+    elements.filterBtns = document.querySelectorAll('.filter-btn');
+    elements.keyGuideToggle = document.getElementById('key-guide-toggle');
+    elements.keyGuideDrawer = document.getElementById('key-guide-drawer');
+    
+    // Note prompt strip elements
+    elements.notePromptStrip = document.getElementById('note-prompt-strip');
+    elements.promptKeys = document.getElementById('prompt-keys');
+    elements.learnProgressFill = document.getElementById('learn-progress-fill');
+    elements.learnProgressText = document.getElementById('learn-progress-text');
+    elements.exitLearnBtn = document.getElementById('exit-learn-btn');
 }
 
 // --- Audio Engine ---
@@ -358,6 +508,11 @@ function playNote(note) {
 
     voices.set(note, { synth: s, disposeTimer: null });
     updateNoteDisplay(note);
+
+    // Check for learn mode progress
+    if (learnModeActive) {
+        checkLearnNote(note);
+    }
 
     if (isRecording) {
         activeNotes.set(note, performance.now());
@@ -1163,38 +1318,240 @@ function setOctave(newOctave) {
     buildPiano();
 }
 
-// --- How to Play Panel ---
+// --- Learn Panel & Learn Mode ---
 
-function initHowToPlayPanel() {
-    elements.howToPlayToggle.addEventListener('click', () => {
-        const expanded = elements.howToPlayToggle.getAttribute('aria-expanded') === 'true';
-        elements.howToPlayToggle.setAttribute('aria-expanded', !expanded);
-
-        if (expanded) {
-            elements.howToPlayContent.classList.add('collapsed');
-        } else {
-            // Set max-height to actual content height for smooth animation
-            elements.howToPlayContent.classList.remove('collapsed');
-            elements.howToPlayContent.style.maxHeight = elements.howToPlayContent.scrollHeight + 'px';
-        }
+function initLearnPanel() {
+    // Populate song list
+    renderSongList('all');
+    
+    // Toggle learn panel
+    elements.learnToggleBtn?.addEventListener('click', () => {
+        elements.learnPanel.classList.toggle('open');
     });
-
-    // Tab switching
-    document.querySelectorAll('.tab').forEach((tab) => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-            document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-
-            // Update max-height after tab switch
-            if (elements.howToPlayToggle.getAttribute('aria-expanded') === 'true') {
-                setTimeout(() => {
-                    elements.howToPlayContent.style.maxHeight = elements.howToPlayContent.scrollHeight + 'px';
-                }, 10);
-            }
+    
+    // Close learn panel
+    elements.learnPanelClose?.addEventListener('click', () => {
+        elements.learnPanel.classList.remove('open');
+    });
+    
+    // Difficulty filter buttons
+    elements.filterBtns?.forEach(btn => {
+        btn.addEventListener('click', () => {
+            elements.filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderSongList(btn.dataset.filter);
         });
     });
+    
+    // Key guide drawer toggle
+    elements.keyGuideToggle?.addEventListener('click', () => {
+        elements.keyGuideDrawer.classList.toggle('open');
+    });
+    
+    // Exit learn mode button
+    elements.exitLearnBtn?.addEventListener('click', () => {
+        exitLearnMode();
+    });
+    
+    // Instrument dropdown
+    initInstrumentDropdown();
+}
+
+function initInstrumentDropdown() {
+    const btn = elements.instrumentBtn;
+    const dropdown = elements.instrumentDropdown;
+    if (!btn || !dropdown) return;
+    
+    // Populate dropdown options
+    dropdown.innerHTML = Object.entries(PRESETS).map(([key, preset]) => 
+        `<div class="dropdown-item${key === currentPreset ? ' active' : ''}" data-preset="${key}">${preset.label}</div>`
+    ).join('');
+    
+    // Toggle dropdown
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
+    });
+    
+    // Select instrument
+    dropdown.addEventListener('click', (e) => {
+        const item = e.target.closest('.dropdown-item');
+        if (!item) return;
+        
+        const preset = item.dataset.preset;
+        switchInstrument(preset);
+        
+        // Update active state
+        dropdown.querySelectorAll('.dropdown-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        
+        // Update button text
+        btn.querySelector('.btn-label').textContent = PRESETS[preset].label;
+        dropdown.classList.remove('open');
+    });
+    
+    // Close on outside click
+    document.addEventListener('click', () => {
+        dropdown.classList.remove('open');
+    });
+}
+
+function renderSongList(filter) {
+    if (!elements.songList) return;
+    
+    const filteredSongs = filter === 'all' 
+        ? SONG_LIBRARY 
+        : SONG_LIBRARY.filter(s => s.difficulty === filter);
+    
+    elements.songList.innerHTML = filteredSongs.map(song => `
+        <div class="song-item" data-song-id="${song.id}">
+            <div class="song-info">
+                <span class="song-title">${song.title}</span>
+                <span class="song-meta">${song.notes.length} notes • ${song.difficulty}</span>
+            </div>
+            <button class="play-song-btn" title="Start Learning">▶</button>
+        </div>
+    `).join('');
+    
+    // Add click handlers
+    elements.songList.querySelectorAll('.song-item').forEach(item => {
+        item.querySelector('.play-song-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const songId = parseInt(item.dataset.songId);
+            startLearnMode(songId);
+        });
+    });
+}
+
+function startLearnMode(songId) {
+    const song = SONG_LIBRARY.find(s => s.id === songId);
+    if (!song) return;
+    
+    currentSong = song;
+    currentNoteIndex = 0;
+    correctNotes = 0;
+    learnModeActive = true;
+    learnStartTime = Date.now();
+    
+    // Close learn panel
+    elements.learnPanel.classList.remove('open');
+    
+    // Show note prompt strip
+    elements.notePromptStrip.classList.add('active');
+    
+    // Render note prompts
+    renderNotePrompts();
+    
+    // Highlight first target key
+    highlightTargetKey();
+    
+    // Update progress
+    updateLearnProgress();
+}
+
+function renderNotePrompts() {
+    if (!elements.promptKeys || !currentSong) return;
+    
+    elements.promptKeys.innerHTML = currentSong.notes.map((note, index) => `
+        <span class="prompt-key ${index === 0 ? 'current' : ''}" data-index="${index}">
+            <span class="prompt-note">${note.note}</span>
+            <span class="prompt-hint">${note.key.toUpperCase()}</span>
+        </span>
+    `).join('');
+}
+
+function highlightTargetKey() {
+    // Remove previous target highlight
+    document.querySelectorAll('.key.target').forEach(k => k.classList.remove('target'));
+    
+    if (!currentSong || currentNoteIndex >= currentSong.notes.length) return;
+    
+    const targetNote = currentSong.notes[currentNoteIndex];
+    const fullNote = resolveNote(targetNote.key);
+    
+    // Find the key element
+    const keyEl = document.querySelector(`.key[data-note="${fullNote}"]`);
+    if (keyEl) {
+        keyEl.classList.add('target');
+    }
+}
+
+function updateLearnProgress() {
+    if (!currentSong) return;
+    
+    const progress = (currentNoteIndex / currentSong.notes.length) * 100;
+    elements.learnProgressFill.style.width = `${progress}%`;
+    elements.learnProgressText.textContent = `${currentNoteIndex}/${currentSong.notes.length}`;
+}
+
+function checkLearnNote(playedNote) {
+    if (!learnModeActive || !currentSong) return;
+    
+    const targetNote = currentSong.notes[currentNoteIndex];
+    const expectedNote = resolveNote(targetNote.key);
+    
+    if (playedNote === expectedNote) {
+        // Correct note!
+        correctNotes++;
+        
+        // Mark prompt as completed
+        const promptEl = elements.promptKeys.querySelector(`[data-index="${currentNoteIndex}"]`);
+        if (promptEl) {
+            promptEl.classList.remove('current');
+            promptEl.classList.add('completed');
+        }
+        
+        // Move to next note
+        currentNoteIndex++;
+        
+        if (currentNoteIndex >= currentSong.notes.length) {
+            // Song complete!
+            completeSong();
+        } else {
+            // Highlight next prompt and key
+            const nextPrompt = elements.promptKeys.querySelector(`[data-index="${currentNoteIndex}"]`);
+            if (nextPrompt) {
+                nextPrompt.classList.add('current');
+                // Scroll prompts to keep current visible
+                nextPrompt.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+            highlightTargetKey();
+            updateLearnProgress();
+        }
+    }
+}
+
+function completeSong() {
+    learnModeActive = false;
+    const duration = ((Date.now() - learnStartTime) / 1000).toFixed(1);
+    
+    // Remove target highlight
+    document.querySelectorAll('.key.target').forEach(k => k.classList.remove('target'));
+    
+    // Update progress to 100%
+    elements.learnProgressFill.style.width = '100%';
+    elements.learnProgressText.textContent = `Complete! ${duration}s`;
+    
+    // Show completion message
+    setTimeout(() => {
+        alert(`🎉 Great job! You completed "${currentSong.title}" in ${duration} seconds!`);
+    }, 300);
+}
+
+function exitLearnMode() {
+    learnModeActive = false;
+    currentSong = null;
+    currentNoteIndex = 0;
+    
+    // Hide note prompt strip
+    elements.notePromptStrip.classList.remove('active');
+    
+    // Remove target highlights
+    document.querySelectorAll('.key.target').forEach(k => k.classList.remove('target'));
+    
+    // Reset progress
+    elements.learnProgressFill.style.width = '0%';
+    elements.learnProgressText.textContent = '0/0';
 }
 
 // --- Audio Start (browser autoplay policy) ---
@@ -1327,11 +1684,6 @@ function init() {
     elements.octaveDown.addEventListener('click', () => setOctave(baseOctave - 1));
     elements.octaveUp.addEventListener('click', () => setOctave(baseOctave + 1));
 
-    // Instrument selector
-    elements.instrumentSelect.addEventListener('change', (e) => {
-        switchInstrument(e.target.value);
-    });
-
     // Effects
     elements.reverbBtn.addEventListener('click', toggleReverb);
     elements.delayBtn.addEventListener('click', toggleDelay);
@@ -1341,8 +1693,19 @@ function init() {
     elements.playBtn.addEventListener('click', playRecording);
     elements.clearBtn.addEventListener('click', clearRecording);
 
-    // How to Play
-    initHowToPlayPanel();
+    // Hamburger toggle for mobile toolbar
+    const hamburger = document.getElementById('toolbar-hamburger');
+    const toolbarControls = document.querySelector('.toolbar-controls');
+    if (hamburger && toolbarControls) {
+        hamburger.addEventListener('click', () => {
+            const isOpen = toolbarControls.classList.toggle('open');
+            hamburger.classList.toggle('open', isOpen);
+            hamburger.setAttribute('aria-expanded', isOpen);
+        });
+    }
+
+    // Learn Panel
+    initLearnPanel();
 
     // Build piano
     buildPiano();
