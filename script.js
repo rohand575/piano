@@ -8,11 +8,29 @@
 // --- Particle Background ---
 
 const PARTICLE_COUNT = 80;
+// Synesthesia palette — each note gets a distinct hue
 const NOTE_COLORS = {
-    'C': '#6366f1', 'C#': '#818cf8', 'D': '#a78bfa', 'D#': '#c084fc',
-    'E': '#e879f9', 'F': '#f472b6', 'F#': '#fb7185', 'G': '#22c55e',
-    'G#': '#34d399', 'A': '#2dd4bf', 'A#': '#38bdf8', 'B': '#60a5fa'
+    'C': '#3b82f6', 'C#': '#6366f1', 'D': '#22c55e', 'D#': '#14b8a6',
+    'E': '#f97316', 'F': '#ec4899', 'F#': '#f43f5e', 'G': '#a855f7',
+    'G#': '#8b5cf6', 'A': '#06b6d4', 'A#': '#0ea5e9', 'B': '#eab308'
 };
+
+// Full theme data for each note (primary, hover, glow)
+const NOTE_THEME = {
+    'C':  { primary: '#3b82f6', hover: '#60a5fa', glow: 'rgba(59,130,246,0.4)' },
+    'C#': { primary: '#6366f1', hover: '#818cf8', glow: 'rgba(99,102,241,0.4)' },
+    'D':  { primary: '#22c55e', hover: '#4ade80', glow: 'rgba(34,197,94,0.4)' },
+    'D#': { primary: '#14b8a6', hover: '#2dd4bf', glow: 'rgba(20,184,166,0.4)' },
+    'E':  { primary: '#f97316', hover: '#fb923c', glow: 'rgba(249,115,22,0.4)' },
+    'F':  { primary: '#ec4899', hover: '#f472b6', glow: 'rgba(236,72,153,0.4)' },
+    'F#': { primary: '#f43f5e', hover: '#fb7185', glow: 'rgba(244,63,94,0.4)' },
+    'G':  { primary: '#a855f7', hover: '#c084fc', glow: 'rgba(168,85,247,0.4)' },
+    'G#': { primary: '#8b5cf6', hover: '#a78bfa', glow: 'rgba(139,92,246,0.4)' },
+    'A':  { primary: '#06b6d4', hover: '#22d3ee', glow: 'rgba(6,182,212,0.4)' },
+    'A#': { primary: '#0ea5e9', hover: '#38bdf8', glow: 'rgba(14,165,233,0.4)' },
+    'B':  { primary: '#eab308', hover: '#facc15', glow: 'rgba(234,179,8,0.4)' },
+};
+
 const DEFAULT_PARTICLE_COLOR = 'rgba(99, 102, 241, 0.4)';
 
 let particles = [];
@@ -233,6 +251,8 @@ let sustainActive = false;
 let sustainedNotes = new Set();
 let voices = new Map();  // note -> { synth, disposeTimer }
 let animFrameId = null;
+let currentNoteColor = '#6366f1';
+let themeResetTimer = null;
 
 // --- DOM References ---
 
@@ -401,6 +421,7 @@ function releaseSustainedNotes() {
         highlightKey(note, false);
     }
     sustainedNotes.clear();
+    scheduleThemeReset();
 }
 
 // --- Waveform Visualizer ---
@@ -695,10 +716,10 @@ function renderPianoRoll() {
         ctx.globalAlpha = 1;
     }
 
-    // "Now" line glow at bottom
+    // "Now" line glow at bottom (reactive to current note color)
     const nowGrad = ctx.createLinearGradient(0, h - 4, 0, h);
     nowGrad.addColorStop(0, 'transparent');
-    nowGrad.addColorStop(1, 'rgba(99, 102, 241, 0.6)');
+    nowGrad.addColorStop(1, hexToRgba(currentNoteColor, 0.6));
     ctx.fillStyle = nowGrad;
     ctx.fillRect(0, h - 4, w, 4);
 
@@ -854,6 +875,44 @@ function addPointerListeners(keyEl, note) {
     keyEl.addEventListener('touchcancel', release);
 }
 
+// --- Note-Reactive Theme ---
+
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function applyNoteTheme(note) {
+    const noteName = note.replace(/\d+/g, '');
+    const theme = NOTE_THEME[noteName];
+    if (!theme) return;
+
+    const root = document.documentElement;
+    root.style.setProperty('--primary', theme.primary);
+    root.style.setProperty('--primary-hover', theme.hover);
+    root.style.setProperty('--primary-glow', theme.glow);
+    root.style.setProperty('--glass-border', hexToRgba(theme.primary, 0.2));
+    currentNoteColor = theme.primary;
+
+    clearTimeout(themeResetTimer);
+}
+
+function scheduleThemeReset() {
+    clearTimeout(themeResetTimer);
+    themeResetTimer = setTimeout(resetNoteTheme, 1200);
+}
+
+function resetNoteTheme() {
+    const root = document.documentElement;
+    root.style.setProperty('--primary', '#6366f1');
+    root.style.setProperty('--primary-hover', '#818cf8');
+    root.style.setProperty('--primary-glow', 'rgba(99,102,241,0.4)');
+    root.style.setProperty('--glass-border', 'rgba(99,102,241,0.15)');
+    currentNoteColor = '#6366f1';
+}
+
 // --- Key Activation ---
 
 function activateKey(note) {
@@ -862,6 +921,7 @@ function activateKey(note) {
     spawnRipple(note);
     reactParticlesToNote(note);
     pianoRollNoteOn(note);
+    applyNoteTheme(note);
 }
 
 function deactivateKey(note) {
@@ -877,6 +937,7 @@ function deactivateKey(note) {
     pianoRollNoteOff(note);
     stopNote(note);
     highlightKey(note, false);
+    scheduleThemeReset();
 }
 
 function highlightKey(note, active) {
@@ -1142,10 +1203,52 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    const silentAudio = new Audio(
-        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
-    );
-    silentAudio.play().catch(() => {});
+    // On mobile (especially iOS), Web Audio routes to the earpiece by default.
+    // Playing an HTML5 <audio> element first claims the loudspeaker output.
+    // The audio must be non-silent and long enough for the OS to register it.
+    try {
+        const sampleRate = 8000;
+        const duration = 0.5; // half a second
+        const numSamples = sampleRate * duration;
+        const bytesPerSample = 2;
+        const dataSize = numSamples * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        // WAV header
+        const writeStr = (offset, str) => {
+            for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+        };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);           // PCM
+        view.setUint16(22, 1, true);           // mono
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * bytesPerSample, true);
+        view.setUint16(32, bytesPerSample, true);
+        view.setUint16(34, 16, true);          // bits per sample
+        writeStr(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        // Near-silent samples (amplitude 1 out of 32767 — inaudible but non-zero)
+        for (let i = 0; i < numSamples; i++) {
+            view.setInt16(44 + i * 2, 1, true);
+        }
+
+        const blob = new Blob([buffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const speakerUnlock = new Audio(url);
+        speakerUnlock.setAttribute('playsinline', '');
+        speakerUnlock.volume = 1.0; // Must be non-zero to claim loudspeaker
+        await speakerUnlock.play();
+        // Clean up after playback
+        speakerUnlock.addEventListener('ended', () => URL.revokeObjectURL(url));
+    } catch (_) {
+        // Fallback: continue even if speaker unlock fails
+    }
 
     await Tone.start();
     initAudio();
@@ -1157,8 +1260,9 @@ async function ensureAudioStarted() {
 function init() {
     cacheElements();
 
-    // Overlay click
+    // Overlay click/touch — touchstart is needed on mobile to unlock audio on first tap
     elements.overlay.addEventListener('click', () => ensureAudioStarted());
+    elements.overlay.addEventListener('touchstart', () => ensureAudioStarted(), { once: true });
 
     // Keyboard events
     document.addEventListener('keydown', async (e) => {

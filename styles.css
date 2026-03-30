@@ -3,6 +3,31 @@
    Premium dark glassmorphism theme — sidebar layout
    ============================================================ */
 
+/* --- Animatable Custom Properties (for note-reactive theme) --- */
+@property --primary {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #6366f1;
+}
+
+@property --primary-hover {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #818cf8;
+}
+
+@property --primary-glow {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: rgba(99, 102, 241, 0.4);
+}
+
+@property --glass-border {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: rgba(99, 102, 241, 0.15);
+}
+
 /* --- Design Tokens --- */
 :root {
     --bg-primary: #0f172a;
@@ -12,6 +37,7 @@
     --primary-hover: #818cf8;
     --primary-glow: rgba(99, 102, 241, 0.4);
     --accent: #22c55e;
+    transition: --primary 0.35s ease, --primary-hover 0.35s ease, --primary-glow 0.35s ease, --glass-border 0.5s ease;
     --accent-hover: #16a34a;
     --danger: #ef4444;
     --text: #f8fafc;
@@ -973,6 +999,13 @@ kbd {
     font-size: 0.8rem;
     color: var(--text-dim);
     margin-bottom: 0.75rem;
+    font-style: italic;
+}
+
+.exercise-hint {
+    font-size: 0.8rem;
+    color: var(--accent);
+    margin-top: 0.5rem;
     font-style: italic;
 }
 
