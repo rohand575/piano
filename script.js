@@ -488,7 +488,8 @@ function switchInstrument(presetKey) {
 function playNote(note) {
     if (!volumeNode) return;
 
-    // Resume audio context if browser suspended it during inactivity
+    // Always try to resume audio context — iOS aggressively suspends it
+    // between user gestures, so we must resume on every interaction
     if (Tone.context.state !== 'running') {
         Tone.context.resume();
     }
@@ -1012,6 +1013,11 @@ function addPointerListeners(keyEl, note) {
         e.preventDefault();
         if (isPressed) return;
         isPressed = true;
+        // On iOS, resume the AudioContext synchronously within the touch gesture
+        // to prevent it from being suspended before Tone.js can produce sound
+        if (audioStarted && Tone.context.state !== 'running') {
+            Tone.context.resume();
+        }
         ensureAudioStarted().then(() => activateKey(note));
     };
 
@@ -1560,17 +1566,15 @@ async function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // --- iOS speaker fix ---
-    // On iOS, Web Audio can be silent because:
-    //   - The ringer/silent switch is on (mutes "ambient" audio category)
-    //   - Audio routes to earpiece instead of speaker
-    // Playing HTML5 <audio> first forces iOS into "playback" audio session,
-    // which bypasses the silent switch and routes to the speaker.
-    // We do NOT replace Tone's AudioContext — Tone.setContext() can break
-    // internal Tone.js state and cause total silence.
+    // --- iOS speaker / silent-switch fix ---
+    // Playing a short silent HTML5 <audio> forces iOS into the "playback"
+    // audio session category, which bypasses the ringer/silent switch and
+    // routes audio to the speaker instead of the earpiece.
+    // The WAV must be truly silent (all-zero samples) to avoid any audible
+    // pop/buzz, and we stop+remove it as soon as it starts playing.
     try {
         const sampleRate = 8000;
-        const numSamples = sampleRate; // 1 second
+        const numSamples = 4000; // 0.5s — just long enough to switch audio session
         const bytesPerSample = 2;
         const dataSize = numSamples * bytesPerSample;
         const buf = new ArrayBuffer(44 + dataSize);
@@ -1583,20 +1587,24 @@ async function ensureAudioStarted() {
         v.setUint32(28, sampleRate * bytesPerSample, true);
         v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
         w(36, 'data'); v.setUint32(40, dataSize, true);
-        for (let i = 0; i < numSamples; i++) v.setInt16(44 + i * 2, 800, true);
+        // All samples stay 0 (silence) — ArrayBuffer is zero-initialized
 
         const blob = new Blob([buf], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
         const a = new Audio(url);
         a.setAttribute('playsinline', '');
-        a.volume = 1.0;
+        a.volume = 0.01; // near-silent as extra safety
         // Must play synchronously inside the user gesture — don't await
         a.play().catch(() => {});
-        // Clean up after it finishes
-        a.addEventListener('ended', () => { a.remove(); URL.revokeObjectURL(url); });
+        // Stop and clean up quickly — we only needed to trigger the audio session
+        setTimeout(() => {
+            try { a.pause(); a.remove(); URL.revokeObjectURL(url); } catch (_) {}
+        }, 200);
     } catch (_) {}
 
-    // Start Tone.js with its own context (don't replace it)
+    // Resume / start Tone.js AudioContext synchronously within the user gesture
+    // iOS requires this to happen in the same call stack as the touch/click event
+    try { Tone.context.resume(); } catch (_) {}
     await Tone.start();
     initAudio();
     elements.overlay.classList.add('hidden');
