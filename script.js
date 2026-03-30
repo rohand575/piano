@@ -475,7 +475,10 @@ function buildAudioGraph() {
 }
 
 function initAudio() {
-    ensureAudioGraphReady();
+    if (!volumeNode) {
+        buildAudioGraph();
+        startVisualizer();
+    }
 }
 
 function switchInstrument(presetKey) {
@@ -486,6 +489,9 @@ function switchInstrument(presetKey) {
 
 function playNote(note) {
     if (!volumeNode) return;
+
+    // iOS suspends AudioContext between gestures — always try to resume
+    resumeAudioContext();
 
     // Kill any existing voice for this note immediately
     disposeVoice(note);
@@ -1553,23 +1559,23 @@ function exitLearnMode() {
     elements.learnProgressText.textContent = '0/0';
 }
 
-// --- Audio Start (browser autoplay policy) ---
+// --- Audio Start (browser autoplay policy + iOS fixes) ---
 
-// Build the audio graph eagerly so it's ready before the first user gesture.
-// This does NOT require a user gesture — only resuming the AudioContext does.
-function ensureAudioGraphReady() {
-    if (volumeNode) return; // already built
-    buildAudioGraph();
-    startVisualizer();
-}
+// Detect iOS/iPadOS — needed for platform-specific audio workarounds
+const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-// Unlock iOS audio session by playing a silent HTML5 <audio> element.
-// This forces iOS from "ambient" to "playback" audio category,
-// bypassing the ringer/silent switch and routing to the main speaker.
-function unlockIOSAudio() {
+// Unlock iOS "playback" audio category by playing an HTML5 <audio> element.
+// iOS Safari defaults to "ambient" category for Web Audio, which:
+//   - Is silenced by the ringer/mute switch
+//   - May route to earpiece instead of speaker
+// Playing an <audio> element forces the session to "playback" category.
+function _unlockIOSPlaybackCategory() {
+    if (!_isIOS) return;
     try {
+        // Create a minimal valid silent WAV
         const sampleRate = 8000;
-        const numSamples = 4000;
+        const numSamples = 1600; // 0.2s
         const bytesPerSample = 2;
         const dataSize = numSamples * bytesPerSample;
         const buf = new ArrayBuffer(44 + dataSize);
@@ -1582,46 +1588,102 @@ function unlockIOSAudio() {
         v.setUint32(28, sampleRate * bytesPerSample, true);
         v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
         w(36, 'data'); v.setUint32(40, dataSize, true);
-        // All samples stay 0 (silence) — ArrayBuffer is zero-initialized
+        // Samples stay at 0 (silence) — ArrayBuffer is zero-initialized
+
         const blob = new Blob([buf], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
         const a = new Audio(url);
         a.setAttribute('playsinline', '');
-        a.volume = 0.01;
+        a.volume = 0.001;
         a.play().catch(() => {});
-        setTimeout(() => {
-            try { a.pause(); a.remove(); URL.revokeObjectURL(url); } catch (_) {}
-        }, 300);
+        a.addEventListener('ended', () => {
+            try { a.remove(); URL.revokeObjectURL(url); } catch (_) {}
+        });
     } catch (_) {}
 }
 
-// Resume/unlock the Tone.js AudioContext. MUST be called synchronously
-// inside a user gesture (touchstart/mousedown/click) on iOS Safari.
-// Returns immediately — no await needed.
+// Play a silent buffer through the native AudioContext to "unlock" it on iOS.
+// This is the technique used by Howler.js — iOS requires actual audio data
+// to flow through the context during a user gesture before it will produce sound.
+function _unlockWebAudioContext(ctx) {
+    try {
+        const silentBuffer = ctx.createBuffer(1, 1, ctx.sampleRate || 44100);
+        const source = ctx.createBufferSource();
+        source.buffer = silentBuffer;
+        source.connect(ctx.destination);
+        source.start(0);
+        source.onended = () => { try { source.disconnect(); } catch (_) {} };
+    } catch (_) {}
+}
+
+// Resume the audio context. Called on every user interaction because
+// iOS aggressively suspends contexts between gestures.
 function resumeAudioContext() {
-    const ctx = Tone.context;
-    if (ctx.state !== 'running') {
-        // Direct resume on the raw AudioContext for maximum iOS compatibility
-        if (ctx.rawContext && ctx.rawContext.resume) {
-            ctx.rawContext.resume();
+    try {
+        // Get the raw native AudioContext from Tone.js and resume it directly
+        const toneCtx = Tone.context;
+        const rawCtx = toneCtx.rawContext || toneCtx._context || toneCtx;
+        if (rawCtx && rawCtx.resume) {
+            rawCtx.resume();
         }
-        ctx.resume();
-    }
-    // Also call Tone.start() — it's safe to call multiple times and returns
-    // a promise, but we intentionally do NOT await it here so we stay
-    // synchronous within the gesture.
+        if (toneCtx.resume) {
+            toneCtx.resume();
+        }
+    } catch (_) {}
+    // Tone.start() is safe to call repeatedly
     Tone.start();
 }
 
 // Called synchronously on the very first user interaction.
-// Handles the one-time iOS unlocking; subsequent calls are a no-op.
+// This is where we create the AudioContext inside the user gesture (critical for iOS).
 function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    unlockIOSAudio();
-    ensureAudioGraphReady();
+    // Step 1: Switch iOS to "playback" audio category via HTML5 Audio
+    _unlockIOSPlaybackCategory();
+
+    // Step 2: Create a fresh AudioContext inside this user gesture.
+    // On iOS Safari, an AudioContext MUST be created (or resumed) during a
+    // user-initiated event (touchstart/click). Tone.js may have already
+    // created one lazily — if it's suspended and we can't resume it, we
+    // create a new one and inject it into Tone.js.
+    try {
+        const existingCtx = Tone.context;
+        const rawCtx = existingCtx.rawContext || existingCtx._context || existingCtx;
+
+        if (rawCtx && rawCtx.state === 'suspended') {
+            rawCtx.resume();
+        }
+
+        // If still not running, create a brand-new AudioContext inside this gesture
+        if (!rawCtx || rawCtx.state !== 'running') {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                const freshCtx = new AudioCtx();
+                // Unlock the fresh context with a silent buffer
+                _unlockWebAudioContext(freshCtx);
+                // Tell Tone.js to use our context
+                Tone.setContext(freshCtx);
+            }
+        } else {
+            // Context exists and is running — just unlock it with a silent buffer
+            _unlockWebAudioContext(rawCtx);
+        }
+    } catch (_) {
+        // Fallback: just try Tone.start()
+    }
+
+    // Step 3: Call Tone.start() and resume
+    Tone.start();
     resumeAudioContext();
+
+    // Step 4: Build the audio graph now that context is unlocked
+    if (!volumeNode) {
+        buildAudioGraph();
+        startVisualizer();
+    }
+
     elements.overlay.classList.add('hidden');
 }
 
