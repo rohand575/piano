@@ -475,8 +475,7 @@ function buildAudioGraph() {
 }
 
 function initAudio() {
-    buildAudioGraph();
-    startVisualizer();
+    ensureAudioGraphReady();
 }
 
 function switchInstrument(presetKey) {
@@ -487,12 +486,6 @@ function switchInstrument(presetKey) {
 
 function playNote(note) {
     if (!volumeNode) return;
-
-    // Always try to resume audio context — iOS aggressively suspends it
-    // between user gestures, so we must resume on every interaction
-    if (Tone.context.state !== 'running') {
-        Tone.context.resume();
-    }
 
     // Kill any existing voice for this note immediately
     disposeVoice(note);
@@ -1013,12 +1006,12 @@ function addPointerListeners(keyEl, note) {
         e.preventDefault();
         if (isPressed) return;
         isPressed = true;
-        // On iOS, resume the AudioContext synchronously within the touch gesture
-        // to prevent it from being suspended before Tone.js can produce sound
-        if (audioStarted && Tone.context.state !== 'running') {
-            Tone.context.resume();
-        }
-        ensureAudioStarted().then(() => activateKey(note));
+
+        // All of these run synchronously within the user gesture —
+        // critical for iOS to allow audio output.
+        ensureAudioStarted();
+        resumeAudioContext();
+        activateKey(note);
     };
 
     const release = () => {
@@ -1562,19 +1555,21 @@ function exitLearnMode() {
 
 // --- Audio Start (browser autoplay policy) ---
 
-async function ensureAudioStarted() {
-    if (audioStarted) return;
-    audioStarted = true;
+// Build the audio graph eagerly so it's ready before the first user gesture.
+// This does NOT require a user gesture — only resuming the AudioContext does.
+function ensureAudioGraphReady() {
+    if (volumeNode) return; // already built
+    buildAudioGraph();
+    startVisualizer();
+}
 
-    // --- iOS speaker / silent-switch fix ---
-    // Playing a short silent HTML5 <audio> forces iOS into the "playback"
-    // audio session category, which bypasses the ringer/silent switch and
-    // routes audio to the speaker instead of the earpiece.
-    // The WAV must be truly silent (all-zero samples) to avoid any audible
-    // pop/buzz, and we stop+remove it as soon as it starts playing.
+// Unlock iOS audio session by playing a silent HTML5 <audio> element.
+// This forces iOS from "ambient" to "playback" audio category,
+// bypassing the ringer/silent switch and routing to the main speaker.
+function unlockIOSAudio() {
     try {
         const sampleRate = 8000;
-        const numSamples = 4000; // 0.5s — just long enough to switch audio session
+        const numSamples = 4000;
         const bytesPerSample = 2;
         const dataSize = numSamples * bytesPerSample;
         const buf = new ArrayBuffer(44 + dataSize);
@@ -1588,25 +1583,45 @@ async function ensureAudioStarted() {
         v.setUint16(32, bytesPerSample, true); v.setUint16(34, 16, true);
         w(36, 'data'); v.setUint32(40, dataSize, true);
         // All samples stay 0 (silence) — ArrayBuffer is zero-initialized
-
         const blob = new Blob([buf], { type: 'audio/wav' });
         const url = URL.createObjectURL(blob);
         const a = new Audio(url);
         a.setAttribute('playsinline', '');
-        a.volume = 0.01; // near-silent as extra safety
-        // Must play synchronously inside the user gesture — don't await
+        a.volume = 0.01;
         a.play().catch(() => {});
-        // Stop and clean up quickly — we only needed to trigger the audio session
         setTimeout(() => {
             try { a.pause(); a.remove(); URL.revokeObjectURL(url); } catch (_) {}
-        }, 200);
+        }, 300);
     } catch (_) {}
+}
 
-    // Resume / start Tone.js AudioContext synchronously within the user gesture
-    // iOS requires this to happen in the same call stack as the touch/click event
-    try { Tone.context.resume(); } catch (_) {}
-    await Tone.start();
-    initAudio();
+// Resume/unlock the Tone.js AudioContext. MUST be called synchronously
+// inside a user gesture (touchstart/mousedown/click) on iOS Safari.
+// Returns immediately — no await needed.
+function resumeAudioContext() {
+    const ctx = Tone.context;
+    if (ctx.state !== 'running') {
+        // Direct resume on the raw AudioContext for maximum iOS compatibility
+        if (ctx.rawContext && ctx.rawContext.resume) {
+            ctx.rawContext.resume();
+        }
+        ctx.resume();
+    }
+    // Also call Tone.start() — it's safe to call multiple times and returns
+    // a promise, but we intentionally do NOT await it here so we stay
+    // synchronous within the gesture.
+    Tone.start();
+}
+
+// Called synchronously on the very first user interaction.
+// Handles the one-time iOS unlocking; subsequent calls are a no-op.
+function ensureAudioStarted() {
+    if (audioStarted) return;
+    audioStarted = true;
+
+    unlockIOSAudio();
+    ensureAudioGraphReady();
+    resumeAudioContext();
     elements.overlay.classList.add('hidden');
 }
 
@@ -1615,30 +1630,37 @@ async function ensureAudioStarted() {
 function init() {
     cacheElements();
 
-    // Overlay click/touch — use touchend on iOS (more reliable for audio unlock)
-    elements.overlay.addEventListener('click', () => ensureAudioStarted());
-    elements.overlay.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        ensureAudioStarted();
-    });
-
     // Keyboard events
-    document.addEventListener('keydown', async (e) => {
+    document.addEventListener('keydown', (e) => {
         if (!audioStarted) {
             const key = e.key.toLowerCase();
             if (key in KEY_MAP || e.key === ' ') {
-                await ensureAudioStarted();
+                ensureAudioStarted();
+                resumeAudioContext();
             }
+        } else {
+            // Always resume on interaction — iOS suspends aggressively
+            resumeAudioContext();
         }
         handleKeyDown(e);
     });
 
     document.addEventListener('keyup', handleKeyUp);
 
+    // Also unlock on first touch anywhere on the page (catches taps on non-key areas)
+    const unlockOnTouch = (e) => {
+        if (!audioStarted) {
+            ensureAudioStarted();
+        }
+        resumeAudioContext();
+    };
+    document.addEventListener('touchstart', unlockOnTouch, { once: false, passive: true });
+    document.addEventListener('click', unlockOnTouch, { once: false });
+
     // Resume AudioContext when returning to the tab
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && audioStarted) {
-            Tone.context.resume();
+            resumeAudioContext();
         }
     });
 
