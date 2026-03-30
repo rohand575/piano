@@ -1711,6 +1711,20 @@ function init() {
     buildPiano();
     initPianoRoll();
 
+    // Rebuild piano on viewport resize (orientation change, etc.)
+    // Black key positions are calculated from CSS custom properties at build time
+    let resizeTimer;
+    let lastWidth = window.innerWidth;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            if (Math.abs(window.innerWidth - lastWidth) > 10) {
+                lastWidth = window.innerWidth;
+                buildPiano();
+            }
+        }, 200);
+    });
+
     // Set initial display values
     elements.volumeValue.textContent = currentVolume + '%';
     elements.octaveDisplay.textContent = baseOctave;
