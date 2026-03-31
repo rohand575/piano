@@ -164,6 +164,14 @@ function unmute(context, allowBackgroundPlayback, forceIOSBehavior) {
     addEventListeners(window, mediaPlaybackEvents, win_mediaPlaybackEvent, true, true);
 
     return {
+        // Call this immediately after unmute() is set up, within the same user
+        // gesture that triggered initialization, so iOS speaker routing is
+        // established on the very first note — not the second.
+        trigger: function () {
+            hasMediaPlaybackEventOccurred = true;
+            updateChannelState(true);
+            updateContextState();
+        },
         dispose: function () {
             destroyChannelTag();
             if (pageVisibilityAPI)

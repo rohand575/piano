@@ -373,6 +373,7 @@ let playbackTimeouts = [];
 let activeKeys = new Set();
 let activeNotes = new Map();
 let audioStarted = false;
+let audioUnlocked = false;
 let volumeNode = null;
 let reverbNode = null;
 let delayNode = null;
@@ -1564,6 +1565,13 @@ function exitLearnMode() {
 // Keep a reference to the unmute handle so it persists and controls iOS audio routing.
 let _unmuteHandle = null;
 
+// iOS detection helper — covers iPhone, iPad, iPod, and modern iPads
+// that report "Mac" UA but expose touch points.
+function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 0);
+}
+
 // Resume the audio context. Called on user interactions.
 function resumeAudioContext() {
     // Resume the raw context directly — Tone.start() alone is not always
@@ -1597,7 +1605,21 @@ function ensureAudioStarted() {
             //   - All platforms: pause/resume on page visibility
             if (typeof unmute === 'function') {
                 _unmuteHandle = unmute(freshCtx, false, false);
+
+                // unmute.js registers its window-capture listeners during THIS
+                // gesture's bubble phase, so they miss the current event and
+                // won't play the silent audio until the *next* interaction.
+                // Calling trigger() here fires the same logic immediately — within
+                // the current user gesture — so iOS routes WebAudio to the media
+                // channel (speaker) from the very first note press.
+                if (typeof _unmuteHandle.trigger === 'function') {
+                    _unmuteHandle.trigger();
+                }
             }
+
+            console.log('AudioContext state:', freshCtx.state);
+            console.log('User agent:', navigator.userAgent);
+            console.log('iOS detected:', isIOS());
 
             // Inject the fresh context into Tone.js, replacing the stale one
             Tone.setContext(freshCtx);
@@ -1633,6 +1655,36 @@ function ensureAudioStarted() {
     elements.overlay.classList.add('hidden');
 }
 
+// Global audio unlock — runs once on first user interaction.
+// Wraps ensureAudioStarted() and guarantees Tone.start() + context resume
+// complete (async) before the audioUnlocked flag is set.
+async function unlockAudio() {
+    try {
+        if (!audioUnlocked) {
+            // Synchronous init: create fresh AudioContext, wire unmute.js,
+            // trigger speaker routing, build audio graph.
+            ensureAudioStarted();
+
+            if (typeof Tone !== 'undefined') {
+                await Tone.start();
+            }
+
+            const rawCtx = Tone.getContext().rawContext;
+            if (rawCtx && rawCtx.state !== 'running') {
+                await rawCtx.resume();
+            }
+
+            audioUnlocked = true;
+            console.log('Audio unlocked successfully');
+            console.log('AudioContext state:', rawCtx ? rawCtx.state : 'unknown');
+            console.log('User agent:', navigator.userAgent);
+            console.log('iOS detected:', isIOS());
+        }
+    } catch (error) {
+        console.error('Audio unlock failed:', error);
+    }
+}
+
 // --- Initialization ---
 
 function init() {
@@ -1643,7 +1695,7 @@ function init() {
         if (!audioStarted) {
             const key = e.key.toLowerCase();
             if (key in KEY_MAP || e.key === ' ') {
-                ensureAudioStarted();
+                unlockAudio();
             }
         }
         handleKeyDown(e);
@@ -1652,13 +1704,13 @@ function init() {
     document.addEventListener('keyup', handleKeyUp);
 
     // Unlock audio on first touch/click anywhere (catches taps on non-key areas).
-    // unmute.js handles subsequent resume/suspend automatically.
+    // unlockAudio() runs ensureAudioStarted() + Tone.start() once, then sets
+    // audioUnlocked so subsequent calls are no-ops.
+    // resumeAudioContext() is still called every time because iOS can re-suspend
+    // the AudioContext between gestures.
     const unlockOnTouch = () => {
-        if (!audioStarted) {
-            ensureAudioStarted();
-        }
-        // Always retry resume — iOS may need a touchend/click user gesture
-        // to fully unlock the speaker even if the context was already created.
+        unlockAudio();
+        // Always retry resume — iOS may suspend context between gestures.
         resumeAudioContext();
     };
     document.addEventListener('touchstart', unlockOnTouch, { passive: true });
