@@ -1585,63 +1585,44 @@ function resumeAudioContext() {
 }
 
 // Called synchronously on the very first user interaction.
-// Critical: on iOS, AudioContext MUST be created/resumed inside a user gesture.
 function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // Create a fresh raw AudioContext inside the user gesture.
-    // Tone.js v15 eagerly creates one at import time, which on iOS is
-    // permanently suspended since it wasn't created during a user gesture.
-    try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-            const freshCtx = new AudioCtx();
-
-            // Pass the RAW AudioContext to unmute.js — it handles:
-            //   - iOS: forcing audio to speaker (media channel) via looping silent MP3
-            //   - iOS: hiding media playback widget / airplay controls
-            //   - All platforms: auto-resume on user interaction
-            //   - All platforms: pause/resume on page visibility
-            if (typeof unmute === 'function') {
-                _unmuteHandle = unmute(freshCtx, false, false);
-
-                // unmute.js registers its window-capture listeners during THIS
-                // gesture's bubble phase, so they miss the current event and
-                // won't play the silent audio until the *next* interaction.
-                // Calling trigger() here fires the same logic immediately — within
-                // the current user gesture — so iOS routes WebAudio to the media
-                // channel (speaker) from the very first note press.
-                if (typeof _unmuteHandle.trigger === 'function') {
-                    _unmuteHandle.trigger();
-                }
-            }
-
-            console.log('AudioContext state:', freshCtx.state);
-            console.log('User agent:', navigator.userAgent);
-            console.log('iOS detected:', isIOS());
-
-            // Inject the fresh context into Tone.js, replacing the stale one
-            Tone.setContext(freshCtx);
-        }
-    } catch (_) {}
-
-    // Resume raw context + Tone.start()
+    // Use Tone.js's built-in AudioContext directly. On iOS 13+, a context created
+    // at import time (in suspended state) can be resumed inside a user gesture —
+    // no need to create a fresh one. Creating a new context and calling
+    // Tone.setContext() risks routing it to the ringer/earpiece channel before
+    // the media session is established.
     const rawCtx = Tone.getContext().rawContext;
+
+    // Wire unmute.js onto the Tone context so iOS routes WebAudio through the
+    // speaker (media channel) instead of the earpiece. unmute.js plays a silent
+    // looping MP3 via an HTML <audio> element which switches iOS audio session
+    // to AVAudioSessionCategoryPlayback (speaker output).
+    if (typeof unmute === 'function') {
+        _unmuteHandle = unmute(rawCtx, false, false);
+
+        // trigger() plays the silent audio immediately within this user gesture —
+        // so iOS speaker routing is active from the very first note press.
+        if (typeof _unmuteHandle.trigger === 'function') {
+            _unmuteHandle.trigger();
+        }
+    }
+
+    // Resume the context (suspended on iOS / browser autoplay policy)
     if (rawCtx && rawCtx.state !== 'running') {
         rawCtx.resume().catch(() => {});
     }
     Tone.start().catch(() => {});
 
-    // Play a short silent buffer to fully unlock iOS audio hardware.
-    // Without this, iOS may keep the context "running" but produce no audible output.
+    // Play a one-shot silent WebAudio buffer to fully unlock iOS audio hardware.
     try {
-        const ctx = rawCtx || Tone.getContext().rawContext;
-        if (ctx && ctx.createBuffer) {
-            const silentBuf = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
-            const src = ctx.createBufferSource();
+        if (rawCtx && rawCtx.createBuffer) {
+            const silentBuf = rawCtx.createBuffer(1, 1, rawCtx.sampleRate || 22050);
+            const src = rawCtx.createBufferSource();
             src.buffer = silentBuf;
-            src.connect(ctx.destination);
+            src.connect(rawCtx.destination);
             src.start(0);
         }
     } catch (_) {}
@@ -1713,8 +1694,10 @@ function init() {
         // Always retry resume — iOS may suspend context between gestures.
         resumeAudioContext();
     };
-    document.addEventListener('touchstart', unlockOnTouch, { passive: true });
-    document.addEventListener('touchend', unlockOnTouch, { passive: true });
+    // capture: true so this fires BEFORE key handlers, giving the silent audio
+    // element the maximum possible head start before the first note plays.
+    document.addEventListener('touchstart', unlockOnTouch, { capture: true, passive: true });
+    document.addEventListener('touchend', unlockOnTouch, { capture: true, passive: true });
     document.addEventListener('click', unlockOnTouch);
 
     // Volume
