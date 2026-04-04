@@ -330,7 +330,7 @@ const BLACK_KEY_OFFSETS = [
 const PRESETS = {
     piano: {
         label: 'Piano',
-        oscillator: { type: 'triangle8' },
+        oscillator: { type: 'triangle' },
         envelope: { attack: 0.015, decay: 1.5, sustain: 0.08, release: 1.0 }
     },
     electric: {
@@ -1565,6 +1565,9 @@ function exitLearnMode() {
 // Keep a reference to the unmute handle so it persists and controls iOS audio routing.
 let _unmuteHandle = null;
 
+// Standalone silent <audio> element for iOS speaker routing (safety net).
+let _iosSilentAudio = null;
+
 // iOS detection helper — covers iPhone, iPad, iPod, and modern iPads
 // that report "Mac" UA but expose touch points.
 function isIOS() {
@@ -1572,16 +1575,56 @@ function isIOS() {
         (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 0);
 }
 
+// Create a silent looping <audio> element for iOS speaker routing.
+// Playing an <audio> element switches iOS from the "ambient" audio session
+// (respects ringer/silent switch → no speaker output) to the "playback"
+// session (always outputs through speaker).  Must be called during a user gesture.
+function _createSilentAudioElement() {
+    function repeat(n, s) { var r = ''; for (var i = 0; i < n; i++) r += s; return r; }
+    // High-quality silent MP3 (same as unmute.js) — must be high bitrate so
+    // WebAudio output mixed alongside it isn't down-sampled.
+    var silence = "data:audio/mpeg;base64,//uQx" + repeat(23, "A") +
+        "WGluZwAAAA8AAAACAAACcQCA" + repeat(16, "gICA") + repeat(66, "/") +
+        "8AAABhTEFNRTMuMTAwA8MAAAAAAAAAABQgJAUHQQAB9AAAAnGMHkkI" + repeat(320, "A") +
+        "//sQxAADgnABGiAAQBCqgCRMAAgEAH" + repeat(15, "/") +
+        "7+n/9FTuQsQH//////2NG0jWUGlio5gLQTOtIoeR2WX////X4s9Atb/JRCbBUpeRUq" + repeat(18, "/") +
+        "9RUi0f2jn/+xDECgPCjAEQAABN4AAANIAAAAQVTEFNRTMuMTAw" + repeat(97, "V") + "Q==";
+    var audio = document.createElement('audio');
+    audio.setAttribute('x-webkit-airplay', 'deny');
+    audio.setAttribute('playsinline', '');
+    audio.setAttribute('webkit-playsinline', '');
+    audio.controls = false;
+    audio.disableRemotePlayback = true;
+    audio.preload = 'auto';
+    audio.loop = true;
+    audio.src = silence;
+    audio.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:0;height:0;';
+    document.body.appendChild(audio);
+    audio.load();
+    return audio;
+}
+
+// Retry playing the iOS silent audio element on every user interaction.
+// If a previous play() failed or iOS paused it (e.g. after backgrounding),
+// this re-establishes the media/playback audio session.
+function _retryIOSSilentAudio() {
+    if (!_iosSilentAudio || !isIOS()) return;
+    if (_iosSilentAudio.paused) {
+        var p = _iosSilentAudio.play();
+        if (p) p.catch(function() {});
+    }
+}
+
 // Resume the audio context. Called on user interactions.
 function resumeAudioContext() {
-    // Resume the raw context directly — Tone.start() alone is not always
-    // sufficient on iOS to unlock the audio output on the speaker.
-    const rawCtx = Tone.getContext().rawContext;
+    var rawCtx = Tone.getContext().rawContext;
     if (rawCtx && rawCtx.state !== 'running') {
         rawCtx.resume().catch(() => {});
     }
-    // Tone.start() is safe to call repeatedly — resumes context + resolves internal promise
     Tone.start().catch(() => {});
+    // Re-attempt iOS silent audio on every interaction in case it was
+    // paused (backgrounding) or the initial play() failed.
+    _retryIOSSilentAudio();
 }
 
 // Called synchronously on the very first user interaction.
@@ -1589,38 +1632,73 @@ function ensureAudioStarted() {
     if (audioStarted) return;
     audioStarted = true;
 
-    // Use Tone.js's built-in AudioContext directly. On iOS 13+, a context created
-    // at import time (in suspended state) can be resumed inside a user gesture —
-    // no need to create a fresh one. Creating a new context and calling
-    // Tone.setContext() risks routing it to the ringer/earpiece channel before
-    // the media session is established.
-    const rawCtx = Tone.getContext().rawContext;
+    var oniOS = isIOS();
+    var rawCtx;
 
-    // Wire unmute.js onto the Tone context so iOS routes WebAudio through the
-    // speaker (media channel) instead of the earpiece. unmute.js plays a silent
-    // looping MP3 via an HTML <audio> element which switches iOS audio session
-    // to AVAudioSessionCategoryPlayback (speaker output).
-    if (typeof unmute === 'function') {
-        _unmuteHandle = unmute(rawCtx, false, false);
+    if (oniOS) {
+        // ── iOS-specific: establish media/playback audio session ────────
+        //
+        // iOS Safari routes WebAudio through the "ambient" audio session by
+        // default, which respects the ringer/silent switch — meaning NO sound
+        // from the speaker when the switch is on silent.  To get reliable
+        // speaker output we must switch to the "playback" audio session.
+        //
+        // Critical ordering (all within the same user gesture):
+        //   1. Play a silent looping <audio> element → iOS switches to "playback"
+        //   2. Create a FRESH AudioContext            → inherits "playback" session
+        //   3. Wire unmute.js for lifecycle mgmt      → handles visibility/focus
+        //   4. Inject the fresh context into Tone.js  → all Tone nodes use it
+        //
+        // Why a FRESH context?  Tone.js creates its AudioContext at import time
+        // (before any user gesture).  On iOS 17+, contexts created outside a
+        // gesture are permanently classified as "ambient" and won't switch to
+        // "playback" even when resumed during a gesture.
 
-        // trigger() plays the silent audio immediately within this user gesture —
-        // so iOS speaker routing is active from the very first note press.
-        if (typeof _unmuteHandle.trigger === 'function') {
-            _unmuteHandle.trigger();
+        // Step 1 — silent <audio> to claim the media/playback channel
+        _iosSilentAudio = _createSilentAudioElement();
+        var playPromise = _iosSilentAudio.play();
+        if (playPromise) playPromise.catch(function() {});
+
+        // Step 2 — fresh AudioContext (created AFTER media channel is claimed)
+        try {
+            var AudioCtx = window.AudioContext || window.webkitAudioContext;
+            rawCtx = new AudioCtx();
+        } catch (e) {
+            rawCtx = Tone.getContext().rawContext;
+        }
+
+        // Step 3 — unmute.js for ongoing lifecycle management
+        if (typeof unmute === 'function') {
+            _unmuteHandle = unmute(rawCtx, false, false);
+            if (_unmuteHandle && typeof _unmuteHandle.trigger === 'function') {
+                _unmuteHandle.trigger();
+            }
+        }
+
+        // Step 4 — inject fresh context into Tone.js
+        try { Tone.setContext(rawCtx); } catch (e) { /* fallback: Tone keeps its own */ }
+    } else {
+        // ── Non-iOS: use Tone's built-in AudioContext ──────────────────
+        rawCtx = Tone.getContext().rawContext;
+        if (typeof unmute === 'function') {
+            _unmuteHandle = unmute(rawCtx, false, false);
+            if (_unmuteHandle && typeof _unmuteHandle.trigger === 'function') {
+                _unmuteHandle.trigger();
+            }
         }
     }
 
-    // Resume the context (suspended on iOS / browser autoplay policy)
+    // Resume the context (may be suspended due to autoplay policy)
     if (rawCtx && rawCtx.state !== 'running') {
         rawCtx.resume().catch(() => {});
     }
     Tone.start().catch(() => {});
 
-    // Play a one-shot silent WebAudio buffer to fully unlock iOS audio hardware.
+    // Play a one-shot silent WebAudio buffer to fully unlock audio hardware.
     try {
         if (rawCtx && rawCtx.createBuffer) {
-            const silentBuf = rawCtx.createBuffer(1, 1, rawCtx.sampleRate || 22050);
-            const src = rawCtx.createBufferSource();
+            var silentBuf = rawCtx.createBuffer(1, 1, rawCtx.sampleRate || 22050);
+            var src = rawCtx.createBufferSource();
             src.buffer = silentBuf;
             src.connect(rawCtx.destination);
             src.start(0);
@@ -1693,6 +1771,8 @@ function init() {
         unlockAudio();
         // Always retry resume — iOS may suspend context between gestures.
         resumeAudioContext();
+        // Re-attempt iOS silent audio if previous play() failed or was paused.
+        _retryIOSSilentAudio();
     };
     // capture: true so this fires BEFORE key handlers, giving the silent audio
     // element the maximum possible head start before the first note plays.

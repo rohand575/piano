@@ -133,7 +133,8 @@ function unmute(context, allowBackgroundPlayback, forceIOSBehavior) {
                     }
                     if (channelTag.paused) {
                         var p = channelTag.play();
-                        if (p) p.then(noop, destroyChannelTag).catch(destroyChannelTag);
+                        // Don't destroy on failure — allow retry on next user interaction
+                        if (p) p.then(noop, noop).catch(noop);
                     }
                 }
             } else {
